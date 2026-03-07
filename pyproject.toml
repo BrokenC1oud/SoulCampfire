@@ -1,0 +1,24 @@
+[project]
+name = "soul-campfire"
+version = "0.1.0"
+description = "a clicker game"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "aiohttp>=3.13.3",
+    "dotenv>=0.9.9",
+    "pydantic>=2.12.5",
+    "requests>=2.32.5",
+]
+
+[project.scripts]
+soul-campfire = "soul_campfire:main"
+
+[build-system]
+requires = ["uv_build>=0.10.2,<0.11.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.5",
+]
