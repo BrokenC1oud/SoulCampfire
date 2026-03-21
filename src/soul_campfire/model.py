@@ -32,6 +32,13 @@ class School(enum.Enum):
     supreme_one_sect = "太一宗"
     rogue = "散修"
 
+    @classmethod
+    def from_chinese(cls, name: str):
+        for member in cls:
+            if member.value == name:
+                return member
+        return cls.rogue
+
 
 class User(Base):
     __tablename__ = "user"
