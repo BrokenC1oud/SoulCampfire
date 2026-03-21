@@ -124,7 +124,6 @@ class HttpServer:
         try:
             data = await request.json()
             event = OneBotEventAdapter.validate_python(data)
-            print(event)
             await self.message_queue.put(event)
         except Exception as e:
             print(data)

@@ -179,7 +179,7 @@ class HttpClient:
         return res_v.data
 
     def send_private_msg(
-        self, user_id: int, message: str, auto_escape: Optional[bool] = False
+            self, user_id: int, message: str, auto_escape: Optional[bool] = False
     ) -> SendPrivateMsgResp:
         return SendPrivateMsgResp(
             **self._api_call(
@@ -191,7 +191,7 @@ class HttpClient:
         )
 
     def send_group_msg(
-        self, group_id: int, message: str, auto_escape: Optional[bool] = False
+            self, group_id: int, message: str, auto_escape: Optional[bool] = False
     ) -> SendGroupMsgResp:
         return SendGroupMsgResp(
             **self._api_call(
@@ -204,29 +204,31 @@ class HttpClient:
 
     @overload
     def send_msg(
-        self,
-        message: str,
-        user_id: int,
-        message_type: Optional[Literal["private"]] = None,
-        auto_escape: Optional[bool] = False,
-    ) -> SendPrivateMsgResp: ...
+            self,
+            message: str,
+            user_id: int,
+            message_type: Optional[Literal["private"]] = None,
+            auto_escape: Optional[bool] = False,
+    ) -> SendPrivateMsgResp:
+        ...
 
     @overload
     def send_msg(
-        self,
-        message: str,
-        group_id: int,
-        message_type: Optional[Literal["group"]] = None,
-        auto_escape: Optional[bool] = False,
-    ) -> SendGroupMsgResp: ...
+            self,
+            message: str,
+            group_id: int,
+            message_type: Optional[Literal["group"]] = None,
+            auto_escape: Optional[bool] = False,
+    ) -> SendGroupMsgResp:
+        ...
 
     def send_msg(
-        self,
-        message: str,
-        message_type: Optional[Literal["private", "group"]] = None,
-        user_id: Optional[int] = None,
-        group_id: Optional[int] = None,
-        auto_escape: Optional[bool] = False,
+            self,
+            message: str,
+            message_type: Optional[Literal["private", "group"]] = None,
+            user_id: Optional[int] = None,
+            group_id: Optional[int] = None,
+            auto_escape: Optional[bool] = False,
     ) -> SendPrivateMsgResp | SendGroupMsgResp:
         if group_id:
             return self.send_group_msg(group_id, message, auto_escape)
@@ -248,7 +250,7 @@ class HttpClient:
         self._api_call("send_like", user_id=user_id, times=times)
 
     def set_group_kick(
-        self, group_id: int, user_id: int, reject_add_request: Optional[bool] = False
+            self, group_id: int, user_id: int, reject_add_request: Optional[bool] = False
     ) -> None:
         self._api_call(
             "set_group_kick",
@@ -258,19 +260,19 @@ class HttpClient:
         )
 
     def set_group_ban(
-        self, group_id: int, user_id: int, duration: Optional[int] = 30 * 60
+            self, group_id: int, user_id: int, duration: Optional[int] = 30 * 60
     ) -> None:
         self._api_call(
             "set_group_ban", group_id=group_id, user_id=user_id, duration=duration
         )
 
     def set_group_anonymous_ban(
-        self,
-        group_id: int,
-        anonymous: Optional[Anonymous] = None,
-        anonymous_flag: Optional[str] = None,
-        flag: Optional[str] = None,
-        duration: Optional[int] = 30 * 60,
+            self,
+            group_id: int,
+            anonymous: Optional[Anonymous] = None,
+            anonymous_flag: Optional[str] = None,
+            flag: Optional[str] = None,
+            duration: Optional[int] = 30 * 60,
     ) -> None:
         self._api_call(
             "set_group_anonymous_ban",
@@ -285,7 +287,7 @@ class HttpClient:
         self._api_call("set_group_whole_ban", group_id=group_id, enable=enable)
 
     def set_group_admin(
-        self, group_id: int, user_id: int, enable: Optional[bool] = True
+            self, group_id: int, user_id: int, enable: Optional[bool] = True
     ) -> None:
         self._api_call(
             "set_group_admin", group_id=group_id, user_id=user_id, enable=enable
@@ -295,7 +297,7 @@ class HttpClient:
         self._api_call("set_group_anonymous", group_id=group_id, enable=enable)
 
     def set_group_card(
-        self, group_id: int, user_id: int, card: Optional[str] = ""
+            self, group_id: int, user_id: int, card: Optional[str] = ""
     ) -> None:
         self._api_call("set_group_card", group_id=group_id, user_id=user_id, card=card)
 
@@ -306,11 +308,11 @@ class HttpClient:
         self._api_call("set_group_leave", group_id=group_id, is_dismiss=is_dismiss)
 
     def set_group_special_title(
-        self,
-        group_id: int,
-        user_id: int,
-        special_title: Optional[str] = "",
-        duration: Optional[int] = -1,
+            self,
+            group_id: int,
+            user_id: int,
+            special_title: Optional[str] = "",
+            duration: Optional[int] = -1,
     ) -> None:
         self._api_call(
             "set_group_special_title",
@@ -321,7 +323,7 @@ class HttpClient:
         )
 
     def set_friend_add_request(
-        self, flag: str, approve: Optional[bool] = True, remark: Optional[str] = ""
+            self, flag: str, approve: Optional[bool] = True, remark: Optional[str] = ""
     ) -> None:
         self._api_call(
             "set_friend_add_request", flag=flag, approve=approve, remark=remark
@@ -329,29 +331,31 @@ class HttpClient:
 
     @overload
     def set_group_add_request(
-        self,
-        flag: str,
-        sub_type: str,
-        approve: Optional[bool] = True,
-        reason: Optional[str] = "",
-    ) -> None: ...
+            self,
+            flag: str,
+            sub_type: str,
+            approve: Optional[bool] = True,
+            reason: Optional[str] = "",
+    ) -> None:
+        ...
 
     @overload
     def set_group_add_request(
-        self,
-        flag: str,
-        type_: str,
-        approve: Optional[bool] = True,
-        reason: Optional[str] = "",
-    ) -> None: ...
+            self,
+            flag: str,
+            type_: str,
+            approve: Optional[bool] = True,
+            reason: Optional[str] = "",
+    ) -> None:
+        ...
 
     def set_group_add_request(
-        self,
-        flag: str,
-        sub_type: Optional[str] = "",
-        type_: Optional[str] = "",
-        approve: Optional[bool] = True,
-        reason: Optional[str] = "",
+            self,
+            flag: str,
+            sub_type: Optional[str] = "",
+            type_: Optional[str] = "",
+            approve: Optional[bool] = True,
+            reason: Optional[str] = "",
     ) -> None:
         self._api_call(
             "set_group_add_request",
@@ -365,7 +369,7 @@ class HttpClient:
         return GetLoginInfoResp(**self._api_call("get_login_info"))
 
     def get_stranger_info(
-        self, user_id: int, no_cache: Optional[bool] = False
+            self, user_id: int, no_cache: Optional[bool] = False
     ) -> GetStrangerInfoResp:
         return GetStrangerInfoResp(
             **self._api_call("get_stranger_info", user_id=user_id, no_cache=no_cache)
@@ -375,7 +379,7 @@ class HttpClient:
         return [GetFriendListResp(**_) for _ in self._api_call("get_friend_list")]
 
     def get_group_info(
-        self, group_id: int, no_cache: Optional[bool] = False
+            self, group_id: int, no_cache: Optional[bool] = False
     ) -> GetGroupInfoResp:
         return GetGroupInfoResp(
             **self._api_call("get_group_info", group_id=group_id, no_cache=no_cache)
@@ -385,7 +389,7 @@ class HttpClient:
         return [GetGroupListResp(**_) for _ in self._api_call("get_group_list")]
 
     def get_group_member_info(
-        self, group_id: int, user_id: int, no_cache: Optional[bool] = False
+            self, group_id: int, user_id: int, no_cache: Optional[bool] = False
     ) -> GetGroupMemberInfoResp:
         return GetGroupMemberInfoResp(
             **self._api_call(
@@ -403,11 +407,11 @@ class HttpClient:
         ]
 
     def get_group_honor_info(
-        self,
-        group_id: int,
-        type_: Literal[
-            "talkative", "performer", "legend", "strong_newbie", "emotion", "all"
-        ],
+            self,
+            group_id: int,
+            type_: Literal[
+                "talkative", "performer", "legend", "strong_newbie", "emotion", "all"
+            ],
     ) -> GetGroupHonorInfoResp:
         return GetGroupHonorInfoResp(
             **self._api_call("get_group_honor_info", group_id=group_id, type=type_)
