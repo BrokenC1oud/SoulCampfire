@@ -2,14 +2,14 @@ import asyncio
 import datetime
 import os
 import random
-from typing import Optional
+from typing import Optional, List
 
 import dotenv
 from sqlalchemy import desc
 
 from soul_campfire.adapter import Adapter
 from soul_campfire.command import CommandParser
-from soul_campfire.model import User, Session, Trait, School, Practice
+from soul_campfire.model import User, Session, Trait, School, Practice, Inventory
 from soul_campfire.onebot import OneBotEvent
 
 db_session = Session()
@@ -25,6 +25,7 @@ def discover_soul(user: User = None, event: OneBotEvent = None):
             cultivation=0,
             trait=trait,
             school=School.rogue,
+            name=event.sender.nickname,
         )
         db_session.add(user)
         db_session.commit()
@@ -135,7 +136,31 @@ def join_school(school: str = None, user: User = None, event: OneBotEvent = None
     else:
         user.school = School.from_chinese(school)
         db_session.commit()
-        return (f"你已加入 {user.school.value}")
+        return t"你已加入 {user.school.value}"
+
+
+@command_parser.register("我的宗门")
+def my_school(user: User = None, event: OneBotEvent = None):
+    if user.school == School.rogue:
+        return "你还是一介散修，尚未拜入任何宗门"
+    ranks: List[User] = db_session.query(User).filter(User.school == user.school).order_by(
+        desc(User.cultivation)).limit(5).all()
+    header = f"你的宗门: {user.school.value}\n当前宗门排行榜:"
+    if not ranks:
+        return f"{header}\n暂无同门弟子上榜"
+    leaderboard = "\n".join([f"第{i + 1}名: {u.name:^20} - {u.cultivation:.2f}" for i, u in enumerate(ranks)])
+    return f"{header}\n{leaderboard}"
+
+
+@command_parser.register("储物袋")
+def inspect_inventory(user: User = None, event: OneBotEvent = None):
+    inventory_items: List[Inventory] = db_session.query(Inventory).filter(Inventory.user_id == user.id).all()
+    return (
+        "您的储物袋：\n" +
+        ("/n".join([f"{_.type.value} x {_.count}" for _ in inventory_items]) if len(inventory_items) else "暂无内容")
+    )
+
+@command_parser.register()
 
 
 def main():

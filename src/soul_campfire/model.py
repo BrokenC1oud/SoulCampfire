@@ -47,6 +47,7 @@ class User(Base):
     cultivation: Mapped[int]
     trait: Mapped[Trait]
     school: Mapped[School]
+    name: Mapped[str]
 
 
 class Practice(Base):
@@ -57,6 +58,20 @@ class Practice(Base):
     cultivation: Mapped[int]
     time: Mapped[datetime.datetime]
     cooldown: Mapped[int]
+
+
+class InventoryItem(enum.Enum):
+    soul_stone = "灵石"
+
+
+class Inventory(Base):
+    __tablename__ = "inventory"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("user.id"))
+    type: Mapped[InventoryItem]
+    count: Mapped[int]
+
 
 
 Base.metadata.create_all(engine)
