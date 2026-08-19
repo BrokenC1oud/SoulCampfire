@@ -30,6 +30,11 @@ pub fn main(init: std.process.Init) !void {
     );
     defer client.deinit();
 
+    var server: SoulCampfire.onebot.Server = try .init(allocator, init.io, "127.0.0.1", 5700);
+    defer server.deinit();
+
+    try server.start();
+
     const world = ecs.init();
     defer _ = ecs.fini(world);
 

@@ -4,6 +4,7 @@ const http = std.http;
 const Io = std.Io;
 const json = std.json;
 const log = std.log.scoped(.onebot);
+const net = std.Io.net;
 
 const OnebotError = error{
     Somehow,
@@ -245,5 +246,130 @@ pub const Client = struct {
         defer result.deinit();
 
         return result.value.message_id;
+    }
+};
+
+pub const Server = struct {
+    allocator: Allocator,
+    io: Io,
+
+    listener: Io.net.Server,
+
+    accept_task: ?Io.Future(Io.Cancelable!void) = null,
+    active_connections: std.atomic.Value(usize) = .init(0),
+    connections: Io.Group = .init,
+    listener_closed: bool = false,
+    shutting_down: std.atomic.Value(bool) = .init(false),
+
+    pub fn init(allocator: Allocator, io: Io, host: []const u8, port: u16) !@This() {
+        const addr = try net.IpAddress.parseIp4(host, port);
+        return .{
+            .allocator = allocator,
+            .io = io,
+            .listener = try addr.listen(
+                io,
+                .{ .reuse_address = true },
+            ),
+        };
+    }
+
+    pub fn start(self: *@This()) !void {
+        self.shutting_down.store(false, .release);
+        self.accept_task = try self.io.concurrent(acceptLoop, .{self});
+    }
+
+    fn acceptLoop(self: *@This()) Io.Cancelable!void {
+        while (!self.shutting_down.load(.acquire)) {
+            const stream = self.listener.accept(self.io) catch |err| switch (err) {
+                error.Canceled => return error.Canceled,
+                error.SocketNotListening => return,
+                else => {
+                    log.err("http accept failed: {t}", .{err});
+                    return error.Canceled;
+                },
+            };
+
+            if (self.shutting_down.load(.acquire)) {
+                stream.close(self.io);
+                return;
+            }
+
+            _ = self.active_connections.fetchAdd(1, .acq_rel);
+            self.connections.concurrent(self.io, handleConnection, .{ self, stream }) catch {
+                _ = self.active_connections.fetchSub(1, .acq_rel);
+                stream.close(self.io);
+                return error.Canceled;
+            };
+        }
+    }
+
+    fn handleConnection(self: *@This(), stream: Io.net.Stream) Io.Cancelable!void {
+        defer stream.close(self.io);
+        defer _ = self.active_connections.fetchSub(1, .acq_rel);
+
+        var recv_buffer: [16384]u8 = undefined;
+        var connection_reader = stream.reader(self.io, &recv_buffer);
+        var connection_writer = stream.writer(self.io, &.{});
+        var http_server: http.Server = .init(
+            &connection_reader.interface,
+            &connection_writer.interface,
+        );
+
+        var request = http_server.receiveHead() catch |err| switch (err) {
+            error.HttpConnectionClosing => return,
+            else => {
+                log.err("failed to receive http request: {t}; stream error: {?t}", .{ err, connection_reader.err });
+                return;
+            },
+        };
+
+        if (request.head.method != .POST) {
+            log.err("non-post request got, dropped", .{});
+            return;
+        }
+
+        const body_reader = request.readerExpectContinue(&.{}) catch |err| {
+            log.err("failed to initialize request body reader: {t}", .{err});
+            return;
+        };
+        const payload = body_reader.allocRemaining(self.allocator, .limited(1024 * 1024)) catch |err| {
+            log.err("failed to read request payload: {t}; stream error: {?t}", .{ err, connection_reader.err });
+            return;
+        };
+        defer self.allocator.free(payload);
+
+        log.debug("POST payload: {s}", .{payload});
+
+        request.respond("", .{ .keep_alive = false }) catch |err| {
+            log.err("failed to send http response: {t}; stream error: {?t}", .{ err, connection_writer.err });
+        };
+    }
+
+    pub fn shutdown(self: *@This()) void {
+        if (self.shutting_down.swap(true, .acq_rel)) return;
+
+        self.listener.socket.close(self.io);
+        self.listener_closed = true;
+
+        if (self.accept_task) |*task| {
+            _ = task.await(self.io) catch {};
+            self.accept_task = null;
+        }
+
+        while (self.active_connections.load(.acquire) != 0) {
+            self.io.sleep(.fromMilliseconds(1), .awake) catch break;
+        }
+
+        if (self.active_connections.load(.acquire) != 0) {
+            self.connections.cancel(self.io);
+        } else {
+            _ = self.connections.await(self.io) catch {};
+        }
+    }
+
+    pub fn deinit(self: *@This()) void {
+        self.shutdown();
+        if (!self.listener_closed) self.listener.deinit(self.io);
+        self.* = undefined;
     }
 };
