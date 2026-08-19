@@ -338,7 +338,20 @@ pub const Server = struct {
         };
         defer self.allocator.free(payload);
 
-        log.debug("POST payload: {s}", .{payload});
+        const parsed = parseEvent(self.allocator, payload) catch |err| {
+            log.err("failed to parse OneBot event: {t}", .{err});
+            request.respond("invalid OneBot event", .{
+                .status = .bad_request,
+                .keep_alive = false,
+            }) catch {};
+            return;
+        };
+        defer parsed.deinit();
+
+        switch (parsed.value) {
+            .group_message => |event| log.debug("{s}", .{event.raw_message}),
+            else => log.debug("unimplemented event, dropped", .{}),
+        }
 
         request.respond("", .{ .keep_alive = false }) catch |err| {
             log.err("failed to send http response: {t}; stream error: {?t}", .{ err, connection_writer.err });
@@ -371,5 +384,140 @@ pub const Server = struct {
         self.shutdown();
         if (!self.listener_closed) self.listener.deinit(self.io);
         self.* = undefined;
+    }
+
+    pub const TextElement = struct {
+        type: enum { text },
+        data: struct { text: []const u8 },
+    };
+
+    pub const ReplyElement = struct {
+        type: enum { reply },
+        data: struct { id: i64 },
+    };
+
+    pub const GenericElement = struct {
+        type: []const u8,
+        data: json.Value,
+    };
+
+    pub const MessageElement = union(enum) {
+        text: TextElement,
+        reply: ReplyElement,
+        face: GenericElement,
+        image: GenericElement,
+        at: GenericElement,
+        file: GenericElement,
+
+        pub fn jsonParse(allocator: Allocator, source: anytype, options: json.ParseOptions) !@This() {
+            const value = try json.Value.jsonParse(allocator, source, options);
+            return jsonParseFromValue(allocator, value, options);
+        }
+
+        pub fn jsonParseFromValue(allocator: Allocator, source: json.Value, options: json.ParseOptions) !@This() {
+            if (source != .object) return error.UnexpectedToken;
+            const type_value = source.object.get("type") orelse return error.MissingField;
+            if (type_value != .string) return error.UnexpectedToken;
+
+            const element_type = type_value.string;
+            if (std.mem.eql(u8, element_type, "text")) {
+                return .{ .text = try json.innerParseFromValue(TextElement, allocator, source, options) };
+            }
+            if (std.mem.eql(u8, element_type, "reply")) {
+                return .{ .reply = try json.innerParseFromValue(ReplyElement, allocator, source, options) };
+            }
+
+            inline for (.{ "face", "image", "at", "file" }) |name| {
+                if (std.mem.eql(u8, element_type, name)) {
+                    return @unionInit(
+                        @This(),
+                        name,
+                        try json.innerParseFromValue(GenericElement, allocator, source, options),
+                    );
+                }
+            }
+            return error.InvalidEnumTag;
+        }
+    };
+
+    pub const EventSender = struct {
+        user_id: i64,
+        nickname: ?[]const u8 = null,
+        card: ?[]const u8 = "",
+        role: ?[]const u8 = null,
+    };
+
+    pub const RawData = struct {
+        msgId: []const u8,
+        msgTime: []const u8,
+        elements: []json.Value = &.{},
+    };
+
+    pub const FileInfo = struct {
+        id: []const u8,
+        name: []const u8,
+        size: i64,
+        busid: i64,
+    };
+
+    pub const GroupMessageEvent = struct {
+        time: i64,
+        self_id: i64,
+        post_type: enum { message },
+        message_type: []const u8,
+        sub_type: []const u8,
+        message_id: i64,
+        user_id: i64,
+        message: []MessageElement,
+        raw_message: []const u8,
+        sender: EventSender,
+        group_id: i64,
+    };
+
+    pub const GroupUploadNoticeEvent = struct {
+        time: i64,
+        self_id: i64,
+        post_type: enum { notice },
+        notice_type: enum { group_upload },
+        group_id: i64,
+        user_id: i64,
+        file: FileInfo,
+    };
+
+    pub const OneBotEvent = union(enum) {
+        group_message: GroupMessageEvent,
+        group_upload_notice: GroupUploadNoticeEvent,
+
+        pub fn jsonParse(allocator: Allocator, source: anytype, options: json.ParseOptions) !@This() {
+            const value = try json.Value.jsonParse(allocator, source, options);
+            return jsonParseFromValue(allocator, value, options);
+        }
+
+        pub fn jsonParseFromValue(allocator: Allocator, source: json.Value, options: json.ParseOptions) !@This() {
+            if (source != .object) return error.UnexpectedToken;
+            const post_type_value = source.object.get("post_type") orelse return error.MissingField;
+            if (post_type_value != .string) return error.UnexpectedToken;
+
+            if (std.mem.eql(u8, post_type_value.string, "message")) {
+                return .{ .group_message = try json.innerParseFromValue(GroupMessageEvent, allocator, source, options) };
+            }
+            if (std.mem.eql(u8, post_type_value.string, "notice")) {
+                const notice_type_value = source.object.get("notice_type") orelse return error.MissingField;
+                if (notice_type_value != .string) return error.UnexpectedToken;
+                if (std.mem.eql(u8, notice_type_value.string, "group_upload")) {
+                    return .{ .group_upload_notice = try json.innerParseFromValue(GroupUploadNoticeEvent, allocator, source, options) };
+                }
+            }
+            return error.InvalidEnumTag;
+        }
+    };
+
+    pub fn parseEvent(allocator: Allocator, payload: []const u8) !json.Parsed(OneBotEvent) {
+        return json.parseFromSlice(
+            OneBotEvent,
+            allocator,
+            payload,
+            .{ .ignore_unknown_fields = true },
+        );
     }
 };
