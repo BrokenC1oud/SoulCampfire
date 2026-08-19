@@ -10,6 +10,7 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/root.zig"),
         .target = target,
     });
+    mod.addImport("SoulCampfire", mod);
 
     const exe = b.addExecutable(.{
         .name = "SoulCampfire",

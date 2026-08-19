@@ -6,6 +6,8 @@ const json = std.json;
 const log = std.log.scoped(.onebot);
 const net = std.Io.net;
 
+const SoulCampfire = @import("SoulCampfire");
+
 const OnebotError = error{
     Somehow,
 };
@@ -252,6 +254,7 @@ pub const Client = struct {
 pub const Server = struct {
     allocator: Allocator,
     io: Io,
+    event_queue: *Io.Queue(SoulCampfire.GroupMessageEvent),
 
     listener: Io.net.Server,
 
@@ -261,11 +264,12 @@ pub const Server = struct {
     listener_closed: bool = false,
     shutting_down: std.atomic.Value(bool) = .init(false),
 
-    pub fn init(allocator: Allocator, io: Io, host: []const u8, port: u16) !@This() {
+    pub fn init(allocator: Allocator, io: Io, event_queue: *Io.Queue(SoulCampfire.GroupMessageEvent), host: []const u8, port: u16) !@This() {
         const addr = try net.IpAddress.parseIp4(host, port);
         return .{
             .allocator = allocator,
             .io = io,
+            .event_queue = event_queue,
             .listener = try addr.listen(
                 io,
                 .{ .reuse_address = true },
@@ -338,18 +342,17 @@ pub const Server = struct {
         };
         defer self.allocator.free(payload);
 
-        const parsed = parseEvent(self.allocator, payload) catch |err| {
-            log.err("failed to parse OneBot event: {t}", .{err});
-            request.respond("invalid OneBot event", .{
-                .status = .bad_request,
-                .keep_alive = false,
-            }) catch {};
+        const parsed = parseEvent(self.allocator, payload) catch {
+            log.err("unimplemented onebot event, dropped", .{});
+            request.respond("", .{ .status = .ok, .keep_alive = false }) catch {};
             return;
         };
         defer parsed.deinit();
 
         switch (parsed.value) {
-            .group_message => |event| log.debug("{s}", .{event.raw_message}),
+            .group_message => |event| {
+                log.debug("{s}", .{event.raw_message});
+            },
             else => log.debug("unimplemented event, dropped", .{}),
         }
 
