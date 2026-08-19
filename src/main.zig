@@ -1,4 +1,6 @@
 const std = @import("std");
+const Allocator = std.mem.Allocator;
+const Io = std.Io;
 const log = std.log.scoped(.main);
 const posix = std.posix;
 
@@ -10,6 +12,8 @@ var should_exit = false;
 
 var event_queue_buffer: []SoulCampfire.GroupMessageEvent = undefined;
 var event_queue: std.Io.Queue(SoulCampfire.GroupMessageEvent) = undefined;
+
+const GlobalContext = struct { gpa: Allocator, io: Io };
 
 pub fn main(init: std.process.Init) !void {
     var act: posix.Sigaction = .{
@@ -47,19 +51,16 @@ pub fn main(init: std.process.Init) !void {
     const world = ecs.init();
     defer _ = ecs.fini(world);
 
+    var global_ctx: GlobalContext = .{ .gpa = allocator, .io = init.io };
+    ecs.set_ctx(world, &global_ctx, noFree);
+
     ecs.set_target_fps(world, 1);
+
+    _ = ecs.ADD_SYSTEM(world, "event handler system", ecs.OnUpdate, messageEventSystem);
 
     var tick: usize = 0;
     while (ecs.progress(world, 0)) : (tick += 1) {
         log.debug("TICK {} BEGIN", .{tick});
-
-        var events: [64]SoulCampfire.GroupMessageEvent = undefined;
-        const count = event_queue.get(init.io, &events, 0) catch 0;
-
-        for (events[0..count]) |*event| {
-            log.debug("{s}", .{event.value.raw_message});
-            event.deinit();
-        }
 
         if (should_exit) ecs.quit(world);
     }
@@ -68,4 +69,19 @@ pub fn main(init: std.process.Init) !void {
 fn posixCtrlHandler(sig: posix.SIG) callconv(.c) void {
     _ = sig;
     should_exit = true;
+}
+
+fn noFree(ctx: ?*anyopaque) callconv(.c) void {
+    _ = ctx;
+}
+
+fn messageEventSystem(it: *ecs.iter_t) void {
+    const global_ctx: *GlobalContext = @ptrCast(@alignCast(ecs.get_ctx(it.world)));
+
+    var events: [64]SoulCampfire.GroupMessageEvent = undefined;
+    const count = event_queue.get(global_ctx.io, &events, 0) catch return;
+    for (events[0..count]) |*event| {
+        log.debug("{s}", .{event.value.raw_message});
+        event.deinit();
+    }
 }

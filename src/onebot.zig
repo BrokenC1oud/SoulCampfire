@@ -343,7 +343,7 @@ pub const Server = struct {
         defer self.allocator.free(payload);
 
         const parsed = parseEvent(self.allocator, payload) catch {
-            log.err("unimplemented onebot event, dropped", .{});
+            log.warn("unimplemented onebot event, dropped", .{});
             request.respond("", .{ .status = .ok, .keep_alive = false }) catch {};
             return;
         };
