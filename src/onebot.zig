@@ -347,13 +347,18 @@ pub const Server = struct {
             request.respond("", .{ .status = .ok, .keep_alive = false }) catch {};
             return;
         };
-        defer parsed.deinit();
 
         switch (parsed.value) {
             .group_message => |event| {
                 log.debug("{s}", .{event.raw_message});
+                self.event_queue.putOne(self.io, .{ .value = event, .arena = parsed.arena }) catch {
+                    log.warn("failed putting event into queue", .{});
+                };
             },
-            else => log.debug("unimplemented event, dropped", .{}),
+            else => {
+                log.debug("unimplemented event, dropped", .{});
+                parsed.deinit();
+            },
         }
 
         request.respond("", .{ .keep_alive = false }) catch |err| {
