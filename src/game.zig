@@ -95,6 +95,7 @@ pub const Game = struct {
         ecs.COMPONENT(self.world.?, Retreat);
 
         _ = ecs.ADD_SYSTEM(self.world.?, "event handler system", ecs.OnUpdate, messageEventSystem);
+        _ = ecs.ADD_SYSTEM(self.world.?, "retreat in depth system", ecs.OnUpdate, depthRetreatSystem);
 
         try self.command_parser.register("检测灵根", inspectSoulCommand);
         try self.command_parser.register("我的灵根", mySoulCommand);
@@ -147,11 +148,7 @@ pub const Game = struct {
         pub fn modify(self: *@This(), m: isize) void {
             switch (self.*) {
                 .refining => |*data| {
-                    if (m >= 0) {
-                        data.minor += @intCast(m);
-                    } else {
-                        data.minor += @intCast(-m);
-                    }
+                    data.minor += @intCast(m);
                 },
             }
         }
@@ -228,16 +225,17 @@ pub const Game = struct {
 
     const Retreat = struct {
         endsAt: i96,
-        dest: ?struct {
+        depth: ?struct {
             group_id: usize,
             message_id: isize,
+            startsAt: i96,
         },
     };
 
-    const RetreatResult = union(enum) {
-        success: isize,
-        fail: isize,
-        deviation: isize,
+    const RetreatResult = union(enum(u8)) {
+        success: isize = 0,
+        fail: isize = 1,
+        deviation: isize = 2,
 
         fn rollRetreat(random: std.Random) @This() {
             const roll = random.intRangeLessThan(usize, 0, 100);
@@ -269,6 +267,14 @@ pub const Game = struct {
         return result;
     }
 
+    fn getPlayer(allocator: Allocator, world: *ecs.world_t, user_id: usize) u64 {
+        const player_name = std.fmt.allocPrintSentinel(allocator, "{}", .{user_id}, 0) catch unreachable;
+        defer allocator.free(player_name);
+
+        const player = ecs.lookup(world, player_name);
+        return player;
+    }
+
     //--------------------------------
     // SYSTEM
     //--------------------------------
@@ -282,9 +288,7 @@ pub const Game = struct {
             defer event.deinit();
             log.debug("{s}", .{event.value.raw_message});
 
-            const player_id = std.fmt.allocPrintSentinel(self.allocator, "{}", .{event.value.sender.user_id}, 0) catch unreachable;
-            defer self.allocator.free(player_id);
-            const player = ecs.lookup(it.world, player_id);
+            const player = getPlayer(self.allocator, it.world, event.value.sender.user_id);
 
             if (player != 0) {
                 const info = ecs.get_mut(it.world, player, BasicInfo);
@@ -297,6 +301,57 @@ pub const Game = struct {
                 self.command_parser.execute(event.value.raw_message[1..], event.*, self) catch |err| {
                     log.warn("failed executing command: {t}", .{err});
                 };
+            }
+        }
+    }
+
+    fn depthRetreatSystem(it: *ecs.iter_t, retreats: []const Retreat) void {
+        const self: *@This() = @ptrCast(@alignCast(ecs.get_ctx(it.world)));
+
+        for (it.entities(), retreats) |entity, r| {
+            if (r.depth) |d| {
+                if (Io.Clock.real.now(self.io).nanoseconds > r.endsAt) {
+                    const now: f128 = @floatFromInt(Io.Clock.real.now(self.io).nanoseconds - d.startsAt);
+                    const ns_per_hour: f128 = @floatFromInt(std.time.ns_per_hour);
+                    const time_consumed: f64 = @floatCast(now / ns_per_hour);
+
+                    var i: usize = 0;
+                    var result = [3]u8{ 0, 0, 0 };
+                    var sum: isize = 0;
+                    const rolls: usize = @intFromFloat(@trunc(time_consumed * 4.0));
+                    while (i < rolls) : (i += 1) {
+                        const r_r = retreat(it.world, entity, self.io, self.random_source.interface()).?;
+                        result[@intFromEnum(r_r)] += 1;
+                        sum += r_r.inner();
+                    }
+
+                    const interrupted = time_consumed < 7.5;
+                    if (interrupted) sum = @divTrunc(sum * 4, 5);
+
+                    var message: std.Io.Writer.Allocating = .init(self.allocator);
+                    defer message.deinit();
+
+                    message.writer.print(
+                        \\【深度闭关总结】
+                        \\本次结算时长：{d:.1} (上限8小时)
+                        \\
+                        \\- 修行有成：{}次
+                        \\- 心神不宁：{}次
+                        \\- 走火入魔：{}次
+                        \\
+                        \\本次深度闭关，你的修为最终变化了{}点！
+                        \\
+                    , .{ time_consumed, result[0], result[1], result[2], sum }) catch unreachable;
+
+                    if (interrupted) message.writer.print(
+                        \\【强行出关惩罚】：因为你强行中断修行，所得感悟流失大半，所幸天道垂怜修为变化为{}
+                    , .{sum}) catch unreachable;
+                    message.writer.flush() catch unreachable;
+
+                    self.client.groupReply(d.group_id, d.message_id, message.written()) catch log.warn("failed sending message", .{});
+
+                    _ = ecs.set(it.world, entity, Retreat, .{ .endsAt = Io.Clock.real.now(self.io).nanoseconds + 22 * std.time.ns_per_hour, .depth = null });
+                }
             }
         }
     }
@@ -333,10 +388,7 @@ pub const Game = struct {
     fn mySoulCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments: []const []const u8) void {
         _ = arguments;
 
-        const player_name = std.fmt.allocPrintSentinel(ctx.game.allocator, "{}", .{ctx.event.value.sender.user_id}, 0) catch unreachable;
-        defer ctx.game.allocator.free(player_name);
-
-        const player = ecs.lookup(ctx.game.world.?, player_name.ptr);
+        const player = getPlayer(ctx.game.allocator, ctx.game.world.?, ctx.event.value.sender.user_id);
         if (player == 0) {
             ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "你还未加入仙界！") catch {
                 log.warn("failed sending message", .{});
@@ -377,10 +429,7 @@ pub const Game = struct {
     fn retreatCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments: []const []const u8) void {
         _ = arguments;
 
-        const player_name = std.fmt.allocPrintSentinel(ctx.game.allocator, "{}", .{ctx.event.value.sender.user_id}, 0) catch unreachable;
-        defer ctx.game.allocator.free(player_name);
-
-        const player = ecs.lookup(ctx.game.world.?, player_name);
+        const player = getPlayer(ctx.game.allocator, ctx.game.world.?, ctx.event.value.sender.user_id);
         if (player == 0) {
             ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "你还未踏上仙途！") catch {
                 log.warn("failed sending message", .{});
@@ -388,12 +437,11 @@ pub const Game = struct {
             };
         }
 
-        // 检查是否有进行中的修炼
         if (retreat(ctx.game.world.?, player, ctx.game.io, ctx.game.random_source.interface())) |result| {
             const time_took = ctx.game.random_source.interface().intRangeAtMost(usize, 10, 15);
             const r: Retreat = .{
                 .endsAt = Io.Clock.real.now(ctx.game.io).nanoseconds + time_took * std.time.ns_per_min,
-                .dest = null,
+                .depth = null,
             };
             _ = ecs.set(ctx.game.world.?, player, Retreat, r);
 
@@ -480,8 +528,58 @@ pub const Game = struct {
     }
 
     fn retreatInDepthCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments: []const []const u8) void {
-        _ = ctx;
         _ = arguments;
+
+        const player = getPlayer(ctx.game.allocator, ctx.game.world.?, ctx.event.value.sender.user_id);
+
+        if (player == 0) {
+            ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "你还未踏上仙途！") catch {
+                log.warn("failed sending message", .{});
+                return;
+            };
+        }
+
+        _ = retreat(ctx.game.world.?, player, ctx.game.io, ctx.game.random_source.interface()) orelse {
+            const active_retreat = ecs.get(ctx.game.world.?, player, Retreat).?;
+            const delta = active_retreat.endsAt - Io.Clock.real.now(ctx.game.io).nanoseconds;
+
+            if (active_retreat.depth == null) {
+                const reply_message = std.fmt.allocPrint(ctx.game.allocator, "修炼还在冷却中！剩余{}h{}min{}s", .{
+                    @divTrunc(delta, std.time.ns_per_hour),
+                    @mod(@divTrunc(delta, std.time.ns_per_min), 60),
+                    @mod(@divTrunc(delta, std.time.ns_per_s), 60),
+                }) catch unreachable;
+                defer ctx.game.allocator.free(reply_message);
+
+                ctx.game.client.groupReply(
+                    ctx.event.value.group_id,
+                    ctx.event.value.message_id,
+                    reply_message,
+                ) catch log.warn("failed sending message", .{});
+            } else {
+                ctx.game.client.groupReply(
+                    ctx.event.value.group_id,
+                    ctx.event.value.message_id,
+                    "你已在深度闭关之中",
+                ) catch log.warn("failed sending message", .{});
+            }
+
+            return;
+        };
+
+        _ = ecs.set(ctx.game.world.?, player, Retreat, .{
+            .endsAt = Io.Clock.real.now(ctx.game.io).nanoseconds + 8 * std.time.ns_per_hour,
+            .depth = .{
+                .group_id = ctx.event.value.group_id,
+                .message_id = ctx.event.value.message_id,
+                .startsAt = Io.Clock.real.now(ctx.game.io).nanoseconds,
+            },
+        });
+
+        ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id,
+            \\你已进入深度闭关状态，神魂将自行吐纳8小时。
+            \\期间你将无法进行大部分操作。到时将自动结算收获。
+        ) catch log.warn("failed sending messages", .{});
     }
 };
 
