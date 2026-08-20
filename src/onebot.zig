@@ -249,6 +249,13 @@ pub const Client = struct {
 
         return result.value.message_id;
     }
+
+    pub fn groupReply(self: *@This(), group_id: usize, message_id: isize, message: []const u8) !void {
+        const reply = try std.fmt.allocPrint(self.allocator, "[CQ:reply,id={}]{s}", .{ message_id, message });
+        defer self.allocator.free(reply);
+
+        _ = try self.sendGroupMsg(group_id, reply, .{});
+    }
 };
 
 pub const Server = struct {
@@ -350,7 +357,6 @@ pub const Server = struct {
 
         switch (parsed.value) {
             .group_message => |event| {
-                log.debug("{s}", .{event.raw_message});
                 self.event_queue.putOne(self.io, .{ .value = event, .arena = parsed.arena }) catch {
                     log.warn("failed putting event into queue", .{});
                 };
@@ -449,7 +455,7 @@ pub const Server = struct {
     };
 
     pub const EventSender = struct {
-        user_id: i64,
+        user_id: usize,
         nickname: ?[]const u8 = null,
         card: ?[]const u8 = "",
         role: ?[]const u8 = null,
@@ -474,12 +480,12 @@ pub const Server = struct {
         post_type: enum { message },
         message_type: []const u8,
         sub_type: []const u8,
-        message_id: i64,
+        message_id: isize,
         user_id: i64,
         message: []MessageElement,
         raw_message: []const u8,
         sender: EventSender,
-        group_id: i64,
+        group_id: usize,
     };
 
     pub const GroupUploadNoticeEvent = struct {

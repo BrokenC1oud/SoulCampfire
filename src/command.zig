@@ -17,6 +17,7 @@ pub const Command = struct {
 
     pub const CommandContext = struct {
         event: SoulCampfire.GroupMessageEvent,
+        game: *SoulCampfire.game.Game,
     };
 
     pub fn init(allocator: Allocator) @This() {
@@ -45,7 +46,7 @@ pub const Command = struct {
         try self.commands.put(owned_name, .{ .callback = callback });
     }
 
-    pub fn execute(self: *@This(), input: []const u8, event: SoulCampfire.GroupMessageEvent) !void {
+    pub fn execute(self: *@This(), input: []const u8, event: SoulCampfire.GroupMessageEvent, game: *SoulCampfire.game.Game) !void {
         var arguments: std.ArrayList([]const u8) = try .initCapacity(self.allocator, 0);
         defer arguments.deinit(self.allocator);
         var iterator = std.mem.tokenizeScalar(u8, input, ' ');
@@ -56,6 +57,6 @@ pub const Command = struct {
         }
 
         const command = self.commands.get(command_name) orelse return CommandError.UnknownCommand;
-        command.callback(.{ .event = event }, arguments.items);
+        command.callback(.{ .event = event, .game = game }, arguments.items);
     }
 };
