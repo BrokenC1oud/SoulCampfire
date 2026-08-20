@@ -435,6 +435,7 @@ pub const Game = struct {
                 log.warn("failed sending message", .{});
                 return;
             };
+            return;
         }
 
         if (retreat(ctx.game.world.?, player, ctx.game.io, ctx.game.random_source.interface())) |result| {
@@ -537,6 +538,7 @@ pub const Game = struct {
                 log.warn("failed sending message", .{});
                 return;
             };
+            return;
         }
 
         _ = retreat(ctx.game.world.?, player, ctx.game.io, ctx.game.random_source.interface()) orelse {
