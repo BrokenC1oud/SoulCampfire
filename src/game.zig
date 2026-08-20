@@ -92,11 +92,16 @@ pub const Game = struct {
         ecs.set_target_fps(self.world.?, 1);
 
         ecs.COMPONENT(self.world.?, BasicInfo);
+        ecs.COMPONENT(self.world.?, Retreat);
 
         _ = ecs.ADD_SYSTEM(self.world.?, "event handler system", ecs.OnUpdate, messageEventSystem);
 
         try self.command_parser.register("检测灵根", inspectSoulCommand);
         try self.command_parser.register("我的灵根", mySoulCommand);
+
+        try self.command_parser.register("闭关修炼", retreatCommand);
+        try self.command_parser.register("服用", tookDrugCommand);
+        try self.command_parser.register("深度闭关", retreatInDepthCommand);
     }
 
     pub fn registerSignal(self: *@This()) void {
@@ -120,7 +125,7 @@ pub const Game = struct {
 
     const BasicInfo = struct {
         user_id: usize,
-        cultivation: usize,
+        cultivation: Cultivation,
         trait: Trait,
         school: School,
 
@@ -129,10 +134,55 @@ pub const Game = struct {
 
             return .{
                 .user_id = user_id,
-                .cultivation = 0,
+                .cultivation = .{ .refining = .{ .level = 1, .minor = 0 } },
                 .trait = random_interface.enumValue(Trait),
                 .school = .rogue,
             };
+        }
+    };
+
+    const Cultivation = union(enum) {
+        refining: struct { level: usize, minor: usize },
+
+        pub fn modify(self: *@This(), m: isize) void {
+            switch (self.*) {
+                .refining => |*data| {
+                    if (m >= 0) {
+                        data.minor += @intCast(m);
+                    } else {
+                        data.minor += @intCast(-m);
+                    }
+                },
+            }
+        }
+
+        pub fn max(self: @This()) usize {
+            return switch (self) {
+                .refining => 100,
+            };
+        }
+
+        pub fn level(self: @This()) usize {
+            switch (self) {
+                inline else => |val| return val.level,
+            }
+        }
+
+        pub fn minor(self: @This()) usize {
+            switch (self) {
+                inline else => |val| return val.minor,
+            }
+        }
+
+        pub fn levelName(self: @This()) []const u8 {
+            return switch (self) {
+                .refining => "练气",
+            };
+        }
+
+        pub fn toDisplay(self: @This(), allocator: std.mem.Allocator) []u8 {
+            const num_str = SoulCampfire.utils.chineseNumbers[self.level()];
+            return std.fmt.allocPrint(allocator, "{s}{s}层", .{ self.levelName(), num_str }) catch unreachable;
         }
     };
 
@@ -176,6 +226,49 @@ pub const Game = struct {
         }
     };
 
+    const Retreat = struct {
+        endsAt: i96,
+        dest: ?struct {
+            group_id: usize,
+            message_id: isize,
+        },
+    };
+
+    const RetreatResult = union(enum) {
+        success: isize,
+        fail: isize,
+        deviation: isize,
+
+        fn rollRetreat(random: std.Random) @This() {
+            const roll = random.intRangeLessThan(usize, 0, 100);
+
+            return if (roll < 70)
+                .{ .success = random.intRangeAtMost(isize, 15, 100) }
+            else if (roll < 97)
+                .{ .fail = -random.intRangeAtMost(isize, 5, 35) }
+            else
+                .{ .deviation = -random.intRangeAtMost(isize, 30, 100) };
+        }
+
+        fn inner(self: @This()) isize {
+            switch (self) {
+                inline else => |val| return val,
+            }
+        }
+    };
+
+    fn retreat(world: *ecs.world_t, player: u64, io: Io, random: std.Random) ?RetreatResult {
+        const active_retreat = ecs.get(world, player, Retreat);
+        if (active_retreat) |r| {
+            if (Io.Clock.real.now(io).nanoseconds < r.endsAt) {
+                return null;
+            }
+        }
+
+        const result = RetreatResult.rollRetreat(random);
+        return result;
+    }
+
     //--------------------------------
     // SYSTEM
     //--------------------------------
@@ -188,6 +281,18 @@ pub const Game = struct {
         for (events[0..count]) |*event| {
             defer event.deinit();
             log.debug("{s}", .{event.value.raw_message});
+
+            const player_id = std.fmt.allocPrintSentinel(self.allocator, "{}", .{event.value.sender.user_id}, 0) catch unreachable;
+            defer self.allocator.free(player_id);
+            const player = ecs.lookup(it.world, player_id);
+
+            if (player != 0) {
+                const info = ecs.get_mut(it.world, player, BasicInfo);
+                if (info) |inner| {
+                    inner.cultivation.modify(self.random_source.interface().intRangeAtMost(isize, 0, 5));
+                }
+            }
+
             if (std.mem.startsWith(u8, event.value.raw_message, ".")) {
                 self.command_parser.execute(event.value.raw_message[1..], event.*, self) catch |err| {
                     log.warn("failed executing command: {t}", .{err});
@@ -253,19 +358,130 @@ pub const Game = struct {
             \\{s} 的天命玉牒：
             \\宗门：{s}
             \\灵根：{s}
-            \\修为：{}
+            \\修为：{}/{}
         , .{
             ctx.event.value.sender.nickname.?,
             info.?.school.toDisplay(),
             info.?.trait.toDisplay(),
-            info.?.cultivation,
+            info.?.cultivation.minor(),
+            info.?.cultivation.max(),
         }) catch unreachable;
         defer ctx.game.allocator.free(reply_msg);
 
         ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, reply_msg) catch {
-            log.err("failed sending messages", .{});
+            log.warn("failed sending messages", .{});
             return;
         };
+    }
+
+    fn retreatCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments: []const []const u8) void {
+        _ = arguments;
+
+        const player_name = std.fmt.allocPrintSentinel(ctx.game.allocator, "{}", .{ctx.event.value.sender.user_id}, 0) catch unreachable;
+        defer ctx.game.allocator.free(player_name);
+
+        const player = ecs.lookup(ctx.game.world.?, player_name);
+        if (player == 0) {
+            ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "你还未踏上仙途！") catch {
+                log.warn("failed sending message", .{});
+                return;
+            };
+        }
+
+        // 检查是否有进行中的修炼
+        if (retreat(ctx.game.world.?, player, ctx.game.io, ctx.game.random_source.interface())) |result| {
+            const time_took = ctx.game.random_source.interface().intRangeAtMost(usize, 10, 15);
+            const r: Retreat = .{
+                .endsAt = Io.Clock.real.now(ctx.game.io).nanoseconds + time_took * std.time.ns_per_min,
+                .dest = null,
+            };
+            _ = ecs.set(ctx.game.world.?, player, Retreat, r);
+
+            const info = ecs.get_mut(ctx.game.world.?, player, BasicInfo).?;
+            info.cultivation.modify(result.inner());
+            const cultivation_level = info.cultivation.toDisplay(ctx.game.allocator);
+            defer ctx.game.allocator.free(cultivation_level);
+
+            const reply_message = switch (result) {
+                .success => std.fmt.allocPrint(ctx.game.allocator,
+                    \\【闭关成功】
+                    \\你福至心灵，成功炼化灵气，基础修为增加了{}点。
+                    \\本次闭关，你的修为最终增加了{}点。
+                    \\
+                    \\当前境界：{s}
+                    \\当前修为：{}/{}
+                    \\
+                    \\你感到一阵疲惫，需要打坐休息{}分钟才能再次闭关。
+                , .{
+                    result.inner(),
+                    result.inner(),
+                    cultivation_level,
+                    info.cultivation.minor(),
+                    info.cultivation.max(),
+                    time_took,
+                }),
+                .fail => std.fmt.allocPrint(ctx.game.allocator,
+                    \\【闭关失败】
+                    \\你心浮气躁，无法凝神，白白浪费了灵气。你的修为减少了{}点。
+                    \\
+                    \\当前境界：{s}
+                    \\当前修为：{}/{}
+                    \\
+                    \\你感到一阵疲惫，需要打坐休息{}分钟才能再次闭关。
+                , .{
+                    -result.inner(),
+                    cultivation_level,
+                    info.cultivation.minor(),
+                    info.cultivation.max(),
+                    time_took,
+                }),
+                .deviation => std.fmt.allocPrint(ctx.game.allocator,
+                    \\【走火入魔】
+                    \\你闭关之时，心魔入侵，道心受损！灵气反噬之下，你的修为倒退了{}点！
+                    \\
+                    \\当前境界：{s}
+                    \\当前修为：{}/{}
+                    \\关: 提前结束，但收益会大打折扣 
+                    \\你感到一阵疲惫，需要打坐休息{}分钟才能再次闭关。
+                , .{
+                    -result.inner(),
+                    cultivation_level,
+                    info.cultivation.minor(),
+                    info.cultivation.max(),
+                    time_took,
+                }),
+            } catch unreachable;
+            defer ctx.game.allocator.free(reply_message);
+
+            ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, reply_message) catch log.warn("failed sending message", .{});
+        } else {
+            const active_retreat = ecs.get(ctx.game.world.?, player, Retreat).?;
+            const delta = active_retreat.endsAt - Io.Clock.real.now(ctx.game.io).nanoseconds;
+
+            const reply_message = std.fmt.allocPrint(ctx.game.allocator, "修炼还在冷却中！剩余{}h{}min{}s", .{
+                @divTrunc(delta, std.time.ns_per_hour),
+                @mod(@divTrunc(delta, std.time.ns_per_min), 60),
+                @mod(@divTrunc(delta, std.time.ns_per_s), 60),
+            }) catch unreachable;
+            defer ctx.game.allocator.free(reply_message);
+
+            ctx.game.client.groupReply(
+                ctx.event.value.group_id,
+                ctx.event.value.message_id,
+                reply_message,
+            ) catch log.warn("failed sending message", .{});
+        }
+    }
+
+    fn tookDrugCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments: []const []const u8) void {
+        // TODO
+        _ = ctx;
+        _ = arguments;
+    }
+
+    fn retreatInDepthCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments: []const []const u8) void {
+        _ = ctx;
+        _ = arguments;
     }
 };
 

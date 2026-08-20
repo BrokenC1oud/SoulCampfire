@@ -254,7 +254,14 @@ pub const Client = struct {
         const reply = try std.fmt.allocPrint(self.allocator, "[CQ:reply,id={}]{s}", .{ message_id, message });
         defer self.allocator.free(reply);
 
-        _ = try self.sendGroupMsg(group_id, reply, .{});
+        var retries: usize = 3;
+        while (true) : (retries -= 1) {
+            if (self.sendGroupMsg(group_id, reply, .{})) |_| {
+                return;
+            } else |err| {
+                if (retries == 1) return err;
+            }
+        }
     }
 };
 

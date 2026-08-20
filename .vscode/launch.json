@@ -11,9 +11,6 @@
             "program": "${workspaceRoot}/zig-out/bin/SoulCampfire",
             "args": [],
             "cwd": "${workspaceRoot}",
-            "env": {
-                "ONEBOT_TOKEN": "_Jskw_ULP5y1G67V038tpBVpN0HAr_IBi5OEx1FDJ1s"
-            }
         }
     ]
 }
