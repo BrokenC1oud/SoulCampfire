@@ -13,6 +13,8 @@ var should_exit = false;
 var event_queue_buffer: []SoulCampfire.GroupMessageEvent = undefined;
 var event_queue: std.Io.Queue(SoulCampfire.GroupMessageEvent) = undefined;
 
+var command_parser: SoulCampfire.command.Command = undefined;
+
 const GlobalContext = struct { gpa: Allocator, io: Io };
 
 pub fn main(init: std.process.Init) !void {
@@ -35,6 +37,11 @@ pub fn main(init: std.process.Init) !void {
     event_queue = .init(event_queue_buffer);
     defer event_queue.close(init.io);
 
+    command_parser = .init(allocator);
+    defer command_parser.deinit();
+
+    try command_parser.register("检测灵根", inspectSoulCommand);
+
     var client: SoulCampfire.onebot.Client = .init(
         allocator,
         init.io,
@@ -43,7 +50,13 @@ pub fn main(init: std.process.Init) !void {
     );
     defer client.deinit();
 
-    var server: SoulCampfire.onebot.Server = try .init(allocator, init.io, &event_queue, "127.0.0.1", 5700);
+    var server: SoulCampfire.onebot.Server = try .init(
+        allocator,
+        init.io,
+        &event_queue,
+        "127.0.0.1",
+        5700,
+    );
     defer server.deinit();
 
     try server.start();
@@ -81,7 +94,19 @@ fn messageEventSystem(it: *ecs.iter_t) void {
     var events: [64]SoulCampfire.GroupMessageEvent = undefined;
     const count = event_queue.get(global_ctx.io, &events, 0) catch return;
     for (events[0..count]) |*event| {
+        defer event.deinit();
         log.debug("{s}", .{event.value.raw_message});
-        event.deinit();
+        if (std.mem.startsWith(u8, event.value.raw_message, ".")) {
+            command_parser.execute(event.value.raw_message[1..]) catch |err| {
+                log.warn("failed executing command: {t}", .{err});
+            };
+        }
     }
+}
+
+fn inspectSoulCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments: []const []const u8) void {
+    _ = ctx;
+    _ = arguments;
+
+    log.debug("command handler called", .{});
 }
