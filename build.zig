@@ -5,10 +5,15 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
     const zflecs = b.dependency("zflecs", .{});
+    const zenver = b.dependency("zenver", .{});
 
     const mod = b.addModule("SoulCampfire", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
+        .imports = &.{
+            .{ .name = "zflecs", .module = zflecs.module("root") },
+            .{ .name = "zenver", .module = zenver.module("zenver") },
+        },
     });
     mod.addImport("SoulCampfire", mod);
 
@@ -21,6 +26,7 @@ pub fn build(b: *std.Build) void {
             .imports = &.{
                 .{ .name = "SoulCampfire", .module = mod },
                 .{ .name = "zflecs", .module = zflecs.module("root") },
+                .{ .name = "zenver", .module = zenver.module("zenver") },
             },
         }),
         .use_llvm = true,

@@ -1,6 +1,7 @@
 const std = @import("std");
 
 pub const command = @import("command.zig");
+pub const game = @import("game.zig");
 pub const onebot = @import("onebot.zig");
 
 pub const GroupMessageEvent = struct {
