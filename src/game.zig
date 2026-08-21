@@ -103,6 +103,10 @@ pub const Game = struct {
         try self.command_parser.register("闭关修炼", retreatCommand);
         try self.command_parser.register("服用", tookDrugCommand);
         try self.command_parser.register("深度闭关", retreatInDepthCommand);
+        try self.command_parser.register("查看闭关", queryRetreatInDepthCommand);
+        try self.command_parser.register("强行出关", quitRetreatInDepthCommand);
+        try self.command_parser.register("避世", quitWorldCommand);
+        try self.command_parser.register("入世", joinWorldCommand);
     }
 
     pub fn registerSignal(self: *@This()) void {
@@ -582,6 +586,76 @@ pub const Game = struct {
             \\你已进入深度闭关状态，神魂将自行吐纳8小时。
             \\期间你将无法进行大部分操作。到时将自动结算收获。
         ) catch log.warn("failed sending messages", .{});
+    }
+
+    fn queryRetreatInDepthCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments: []const []const u8) void {
+        _ = arguments;
+
+        const player = getPlayer(ctx.game.allocator, ctx.game.world.?, ctx.event.value.sender.user_id);
+
+        if (player == 0) {
+            ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "你还未踏上仙途！") catch {
+                log.warn("failed sending message", .{});
+                return;
+            };
+            return;
+        }
+
+        const active_retreat = ecs.get(ctx.game.world.?, player, Retreat);
+        if (active_retreat == null or active_retreat.?.depth == null) {
+            ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "你并未处于深度闭关之中") catch {
+                log.warn("failed sending message", .{});
+                return;
+            };
+            return;
+        }
+
+        const delta = active_retreat.?.endsAt - Io.Clock.real.now(ctx.game.io).nanoseconds;
+        const message = std.fmt.allocPrint(ctx.game.allocator, "你正在深度闭关，预计需要{}小时{}分钟{}秒即可功成圆满。", .{
+            @divTrunc(delta, std.time.ns_per_hour),
+            @mod(@divTrunc(delta, std.time.ns_per_min), 60),
+            @mod(@divTrunc(delta, std.time.ns_per_s), 60),
+        }) catch unreachable;
+        defer ctx.game.allocator.free(message);
+
+        ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, message) catch log.warn("failed sending message", .{});
+    }
+
+    fn quitRetreatInDepthCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments: []const []const u8) void {
+        _ = arguments;
+
+        const player = getPlayer(ctx.game.allocator, ctx.game.world.?, ctx.event.value.sender.user_id);
+
+        if (player == 0) {
+            ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "你还未踏上仙途！") catch {
+                log.warn("failed sending message", .{});
+                return;
+            };
+            return;
+        }
+
+        const active_retreat = ecs.get_mut(ctx.game.world.?, player, Retreat);
+        if (active_retreat == null or active_retreat.?.depth == null) {
+            ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "你并未处于深度闭关之中") catch {
+                log.warn("failed sending message", .{});
+                return;
+            };
+            return;
+        }
+
+        active_retreat.?.endsAt = Io.Clock.real.now(ctx.game.io).nanoseconds;
+
+        ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "你强行中断了修炼，正在进行结算") catch log.warn("failed sending message", .{});
+    }
+
+    fn quitWorldCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments: []const []const u8) void {
+        _ = ctx;
+        _ = arguments;
+    }
+
+    fn joinWorldCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments: []const []const u8) void {
+        _ = ctx;
+        _ = arguments;
     }
 };
 
