@@ -6,6 +6,9 @@ pub fn build(b: *std.Build) void {
 
     const zflecs = b.dependency("zflecs", .{});
     const zenver = b.dependency("zenver", .{});
+    const fridge = b.dependency("fridge", .{
+        .bundle = true,
+    });
 
     const mod = b.addModule("SoulCampfire", .{
         .root_source_file = b.path("src/root.zig"),
@@ -13,6 +16,7 @@ pub fn build(b: *std.Build) void {
         .imports = &.{
             .{ .name = "zflecs", .module = zflecs.module("root") },
             .{ .name = "zenver", .module = zenver.module("zenver") },
+            .{ .name = "fridge", .module = fridge.module("fridge") },
         },
     });
     mod.addImport("SoulCampfire", mod);

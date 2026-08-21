@@ -3,3 +3,7 @@ zig-pkg
 zig-out
 
 .env
+
+.idea
+
+soul_campfire.*

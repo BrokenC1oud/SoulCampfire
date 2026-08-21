@@ -14,6 +14,8 @@ var signal_game: ?*Game = null;
 pub const Game = struct {
     allocator: Allocator,
     io: Io,
+    random_source: std.Random.IoSource,
+
     env: *Zenver,
 
     client: SoulCampfire.onebot.Client,
@@ -28,7 +30,7 @@ pub const Game = struct {
 
     world: ?*ecs.world_t = null,
 
-    random_source: std.Random.IoSource,
+    db: SoulCampfire.db.Db,
 
     pub fn init(self: *@This(), allocator: Allocator, io: Io, env: *Zenver) !void {
         self.* = undefined;
@@ -64,6 +66,9 @@ pub const Game = struct {
         errdefer self.server.deinit();
 
         self.random_source = .{ .io = self.io };
+
+        self.db = try .init(self.allocator, self.io, "soul_campfire.db");
+        errdefer self.db.deinit();
     }
 
     pub fn deinit(self: *@This()) void {
@@ -79,10 +84,15 @@ pub const Game = struct {
 
         self.event_queue.close(self.io);
         self.allocator.free(self.event_queue_buffer);
+
+        self.db.deinit();
+
         self.* = undefined;
     }
 
     pub fn start(self: *@This()) !void {
+        try self.db.migrate();
+
         try self.server.start();
 
         self.world = ecs.init();
@@ -96,6 +106,8 @@ pub const Game = struct {
 
         _ = ecs.ADD_SYSTEM(self.world.?, "event handler system", ecs.OnUpdate, messageEventSystem);
         _ = ecs.ADD_SYSTEM(self.world.?, "retreat in depth system", ecs.OnUpdate, depthRetreatSystem);
+
+        _ = ecs.ADD_SYSTEM(self.world.?, "save system", ecs.OnStore, saveSystem);
 
         try self.command_parser.register("检测灵根", inspectSoulCommand);
         try self.command_parser.register("我的灵根", mySoulCommand);
@@ -129,7 +141,7 @@ pub const Game = struct {
     }
 
     const BasicInfo = struct {
-        user_id: usize,
+        id: usize,
         cultivation: Cultivation,
         trait: Trait,
         school: School,
@@ -138,7 +150,7 @@ pub const Game = struct {
             const random_interface = random_source.interface();
 
             return .{
-                .user_id = user_id,
+                .id = user_id,
                 .cultivation = .{ .refining = .{ .level = 1, .minor = 0 } },
                 .trait = random_interface.enumValue(Trait),
                 .school = .rogue,
@@ -228,6 +240,7 @@ pub const Game = struct {
     };
 
     const Retreat = struct {
+        id: usize,
         endsAt: i96,
         depth: ?struct {
             group_id: usize,
@@ -354,8 +367,19 @@ pub const Game = struct {
 
                     self.client.groupReply(d.group_id, d.message_id, message.written()) catch log.warn("failed sending message", .{});
 
-                    _ = ecs.set(it.world, entity, Retreat, .{ .endsAt = Io.Clock.real.now(self.io).nanoseconds + 22 * std.time.ns_per_hour, .depth = null });
+                    _ = ecs.set(it.world, entity, Retreat, .{ .id = r.id, .endsAt = Io.Clock.real.now(self.io).nanoseconds + 22 * std.time.ns_per_hour, .depth = null });
                 }
+            }
+        }
+    }
+
+    fn saveSystem(it: *ecs.iter_t) void {
+        var players = ecs.each(it.world, BasicInfo);
+        while (ecs.each_next(&players)) {
+            for (players.entities()) |entity| {
+                const name = ecs.get_name(it.world, entity) orelse continue;
+                const user_id = std.fmt.parseInt(usize, name, 10) catch unreachable;
+                _ = user_id;
             }
         }
     }
@@ -445,6 +469,7 @@ pub const Game = struct {
         if (retreat(ctx.game.world.?, player, ctx.game.io, ctx.game.random_source.interface())) |result| {
             const time_took = ctx.game.random_source.interface().intRangeAtMost(usize, 10, 15);
             const r: Retreat = .{
+                .id = ctx.event.value.sender.user_id,
                 .endsAt = Io.Clock.real.now(ctx.game.io).nanoseconds + time_took * std.time.ns_per_min,
                 .depth = null,
             };
@@ -574,6 +599,7 @@ pub const Game = struct {
         };
 
         _ = ecs.set(ctx.game.world.?, player, Retreat, .{
+            .id = ctx.event.value.sender.user_id,
             .endsAt = Io.Clock.real.now(ctx.game.io).nanoseconds + 8 * std.time.ns_per_hour,
             .depth = .{
                 .group_id = ctx.event.value.group_id,

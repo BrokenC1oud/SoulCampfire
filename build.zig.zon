@@ -18,6 +18,10 @@
             .url = "git+https://github.com/Blize/zenver#72bddbc0f6d25fa62ba521ec166b05e2514aff1f",
             .hash = "zenver-0.3.0-U8u2s1pcAAAvF2S2OE2TwhW_F3snF7nBJONNTaBJo-r3",
         },
+        .fridge = .{
+            .url = "git+https://github.com/Noodlez1232/fridge#9aa3fc50a0c86dca0dcd7e0023d5765fa30e5964",
+            .hash = "fridge-0.9.5-3GyIimrGAQCY404B3oeRFFxV20lwVY_hWiWlTMhMsXR8",
+        },
     },
     .paths = .{
         "build.zig",
