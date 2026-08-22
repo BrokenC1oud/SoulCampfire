@@ -58,10 +58,10 @@ pub const Db = struct {
         return switch (@typeInfo(T)) {
             .int => |i| if (i.bits > 64) "TEXT" else "INTEGER",
             .float => "REAL",
-            .array => |array| if (array.child == u8) "TEXT" else @compileError("array not yet implemented"),
+            .pointer => |p| if (p.child == u8) "TEXT" else @compileError("pointer not supported"),
             .@"struct", .@"enum", .@"union" => "TEXT",
             .optional => |optional| columnType(optional.child),
-            else => |e| @compileError(@typeName(e) ++ "unimplemented"),
+            else => |e| @compileError(@tagName(e) ++ " unimplemented"),
         };
     }
 

@@ -91,7 +91,7 @@ pub const Game = struct {
     }
 
     pub fn start(self: *@This()) !void {
-        try self.db.registerModel(&.{ Player, Retreat });
+        try self.db.registerModel(&.{ Player, Retreat, School });
 
         try self.server.start();
 
@@ -103,6 +103,8 @@ pub const Game = struct {
 
         ecs.COMPONENT(self.world.?, Player);
         ecs.COMPONENT(self.world.?, Retreat);
+
+        ecs.COMPONENT(self.world.?, School);
 
         try self.loadData();
 
@@ -149,7 +151,7 @@ pub const Game = struct {
         id: usize,
         cultivation: Cultivation,
         trait: Trait,
-        school: School,
+        school: ?SchoolRelation,
 
         fn random(random_source: *std.Random.IoSource, user_id: usize) @This() {
             const random_interface = random_source.interface();
@@ -158,7 +160,7 @@ pub const Game = struct {
                 .id = user_id,
                 .cultivation = .{ .refining = .{ .level = 1, .minor = 0 } },
                 .trait = random_interface.enumValue(Trait),
-                .school = .rogue,
+                .school = null,
             };
         }
     };
@@ -226,26 +228,20 @@ pub const Game = struct {
         }
     };
 
-    const School = enum {
-        star_palace,
-        yellow_maple_valley,
-        acacia_sect,
-        black_demon,
-        all_souls_sect,
-        supreme_one_sect,
-        rogue,
-
-        pub fn toDisplay(self: @This()) []const u8 {
-            return switch (self) {
-                .star_palace => "星宫",
-                .yellow_maple_valley => "黄枫谷",
-                .acacia_sect => "合欢宗",
-                .black_demon => "黑煞教",
-                .all_souls_sect => "万灵宗",
-                .supreme_one_sect => "太一宗",
-                .rogue => "散修",
-            };
-        }
+    const SchoolRelation = struct {
+        id: usize,
+        role: enum {
+            /// 宗主
+            owner,
+            /// 长老
+            elder,
+            /// 亲传
+            disciple,
+            /// 内门
+            inner,
+            /// 外门
+            outer,
+        },
     };
 
     const Retreat = struct {
@@ -281,6 +277,13 @@ pub const Game = struct {
         }
     };
 
+    const School = struct {
+        id: usize,
+        name: []u8,
+        scale: usize,
+        stone: usize,
+    };
+
     fn retreat(world: *ecs.world_t, player: u64, io: Io, random: std.Random) ?RetreatResult {
         const active_retreat = ecs.get(world, player, Retreat);
         if (active_retreat) |r| {
@@ -301,6 +304,16 @@ pub const Game = struct {
         return player;
     }
 
+    fn getPlayerSchool(allocator: Allocator, world: *ecs.world_t, school_rel: SchoolRelation) *const School {
+        const school_name = std.fmt.allocPrintSentinel(allocator, "School_{}", .{school_rel.id}, 0) catch unreachable;
+        defer allocator.free(school_name);
+
+        const school_entity = ecs.lookup(world, school_name);
+        const school = ecs.get(world, school_entity, School).?;
+
+        return school;
+    }
+
     fn loadData(self: *@This()) !void {
         const players = try self.db.session.query(Player).findAll();
         for (players) |player| {
@@ -311,13 +324,19 @@ pub const Game = struct {
 
             _ = ecs.set(self.world.?, entity, Player, player);
 
-            if (try self.db.session.find(Player, player.id)) |info| {
-                _ = ecs.set(self.world.?, entity, Player, info);
-            }
-
             if (try self.db.session.find(Retreat, player.id)) |r| {
                 _ = ecs.set(self.world.?, entity, Retreat, r);
             }
+        }
+
+        const schools = try self.db.session.query(School).findAll();
+        for (schools) |school| {
+            const new_entity_name = std.fmt.allocPrintSentinel(self.allocator, "School_{}", .{school.id}, 0) catch unreachable;
+            defer self.allocator.free(new_entity_name);
+
+            const entity = ecs.new_entity(self.world.?, new_entity_name);
+
+            _ = ecs.set(self.world.?, entity, School, school);
         }
     }
 
@@ -410,14 +429,6 @@ pub const Game = struct {
             for (players.entities()) |entity| {
                 const user_id = ecs.get(it.world, entity, Player).?.id;
 
-                const p = self.db.session.query(Player).where("id", user_id).findOne() catch {
-                    log.warn("db error", .{});
-                    continue;
-                };
-                if (p == null) {
-                    _ = self.db.session.insert(Player, .{ .id = user_id }) catch log.warn("db error", .{});
-                }
-
                 const info_persisted = self.db.session.query(Player).where("id", user_id).findOne() catch {
                     log.warn("db error", .{});
                     continue;
@@ -443,6 +454,25 @@ pub const Game = struct {
                         } else {
                             _ = self.db.session.insert(Retreat, r.*) catch log.warn("db error", .{});
                         }
+                    }
+                }
+            }
+        }
+
+        var schools = ecs.each(it.world, School);
+        while (ecs.each_next(&schools)) {
+            for (schools.entities()) |entity| {
+                const school_mem = ecs.get(self.world.?, entity, School).?;
+                const school_persisted = self.db.session.find(School, school_mem.id) catch {
+                    log.warn("db error", .{});
+                    continue;
+                };
+
+                if (school_persisted == null or !std.meta.eql(school_mem.*, school_persisted.?)) {
+                    if (school_persisted) |p| {
+                        self.db.session.update(School, p.id, school_mem.*) catch log.warn("db error", .{});
+                    } else {
+                        _ = self.db.session.insert(School, school_mem.*) catch log.warn("db error", .{});
                     }
                 }
             }
@@ -506,7 +536,7 @@ pub const Game = struct {
             \\修为：{}/{}
         , .{
             ctx.event.value.sender.nickname.?,
-            info.?.school.toDisplay(),
+            if (info.?.school) |school| getPlayerSchool(ctx.game.allocator, ctx.game.world.?, school).name else "散修",
             info.?.trait.toDisplay(),
             info.?.cultivation.minor(),
             info.?.cultivation.max(),
@@ -750,45 +780,8 @@ pub const Game = struct {
     }
 
     fn joinSchoolCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments: []const []const u8) void {
-        const player = getPlayer(ctx.game.allocator, ctx.game.world.?, ctx.event.value.sender.user_id);
-
-        if (player == 0) {
-            ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "你还未踏上仙途！") catch {
-                log.warn("failed sending message", .{});
-                return;
-            };
-            return;
-        }
-
-        const info = ecs.get_mut(ctx.game.world.?, player, Player).?;
-        if (info.school != .rogue) {
-            ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "你已经加入其他宗门了 需要叛出现有宗门才能再次加入宗门") catch log.warn("failed sending message", .{});
-            return;
-        }
-
-        const selected_school: School = if (std.mem.eql(u8, School.acacia_sect.toDisplay(), arguments[0]))
-            .acacia_sect
-        else if (std.mem.eql(u8, School.all_souls_sect.toDisplay(), arguments[0]))
-            .all_souls_sect
-        else if (std.mem.eql(u8, School.black_demon.toDisplay(), arguments[0]))
-            .black_demon
-        else if (std.mem.eql(u8, School.star_palace.toDisplay(), arguments[0]))
-            .star_palace
-        else if (std.mem.eql(u8, School.supreme_one_sect.toDisplay(), arguments[0]))
-            .supreme_one_sect
-        else if (std.mem.eql(u8, School.yellow_maple_valley.toDisplay(), arguments[0]))
-            .yellow_maple_valley
-        else {
-            ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "输入不是一个有效的宗门") catch log.warn("failed sending message", .{});
-            return;
-        };
-
-        info.school = selected_school;
-
-        const msg = std.fmt.allocPrint(ctx.game.allocator, "恭喜这位道友，你通过了考验，成功拜入了【{s}】", .{selected_school.toDisplay()}) catch unreachable;
-        defer ctx.game.allocator.free(msg);
-
-        ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, msg) catch log.warn("failed sending message", .{});
+        _ = ctx;
+        _ = arguments;
     }
 
     fn mySchoolCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments: []const []const u8) void {
