@@ -91,7 +91,7 @@ pub const Game = struct {
     }
 
     pub fn start(self: *@This()) !void {
-        try self.db.registerModel(&.{ Player, BasicInfo, Retreat });
+        try self.db.registerModel(&.{ Player, Retreat });
 
         try self.server.start();
 
@@ -101,7 +101,7 @@ pub const Game = struct {
 
         ecs.set_target_fps(self.world.?, 1);
 
-        ecs.COMPONENT(self.world.?, BasicInfo);
+        ecs.COMPONENT(self.world.?, Player);
         ecs.COMPONENT(self.world.?, Retreat);
 
         try self.loadData();
@@ -121,6 +121,9 @@ pub const Game = struct {
         try self.command_parser.register("强行出关", quitRetreatInDepthCommand);
         try self.command_parser.register("避世", quitWorldCommand);
         try self.command_parser.register("入世", joinWorldCommand);
+
+        try self.command_parser.register("拜入宗门", joinSchoolCommand);
+        try self.command_parser.register("我的宗门", mySchoolCommand);
     }
 
     pub fn registerSignal(self: *@This()) void {
@@ -143,10 +146,6 @@ pub const Game = struct {
     }
 
     const Player = struct {
-        id: usize,
-    };
-
-    const BasicInfo = struct {
         id: usize,
         cultivation: Cultivation,
         trait: Trait,
@@ -295,7 +294,7 @@ pub const Game = struct {
     }
 
     fn getPlayer(allocator: Allocator, world: *ecs.world_t, user_id: usize) u64 {
-        const player_name = std.fmt.allocPrintSentinel(allocator, "{}", .{user_id}, 0) catch unreachable;
+        const player_name = std.fmt.allocPrintSentinel(allocator, "Player_{}", .{user_id}, 0) catch unreachable;
         defer allocator.free(player_name);
 
         const player = ecs.lookup(world, player_name);
@@ -305,13 +304,15 @@ pub const Game = struct {
     fn loadData(self: *@This()) !void {
         const players = try self.db.session.query(Player).findAll();
         for (players) |player| {
-            const new_entity_name = std.fmt.allocPrintSentinel(self.allocator, "{}", .{player.id}, 0) catch unreachable;
+            const new_entity_name = std.fmt.allocPrintSentinel(self.allocator, "Player_{}", .{player.id}, 0) catch unreachable;
             defer self.allocator.free(new_entity_name);
 
             const entity = ecs.new_entity(self.world.?, new_entity_name);
 
-            if (try self.db.session.find(BasicInfo, player.id)) |info| {
-                _ = ecs.set(self.world.?, entity, BasicInfo, info);
+            _ = ecs.set(self.world.?, entity, Player, player);
+
+            if (try self.db.session.find(Player, player.id)) |info| {
+                _ = ecs.set(self.world.?, entity, Player, info);
             }
 
             if (try self.db.session.find(Retreat, player.id)) |r| {
@@ -336,7 +337,7 @@ pub const Game = struct {
             const player = getPlayer(self.allocator, it.world, event.value.sender.user_id);
 
             if (player != 0) {
-                const info = ecs.get_mut(it.world, player, BasicInfo);
+                const info = ecs.get_mut(it.world, player, Player);
                 if (info) |inner| {
                     inner.cultivation.modify(self.random_source.interface().intRangeAtMost(isize, 0, 5));
                 }
@@ -404,11 +405,10 @@ pub const Game = struct {
     fn saveSystem(it: *ecs.iter_t) void {
         const self: *@This() = @ptrCast(@alignCast(ecs.get_ctx(it.world)));
 
-        var players = ecs.each(it.world, BasicInfo);
+        var players = ecs.each(it.world, Player);
         while (ecs.each_next(&players)) {
             for (players.entities()) |entity| {
-                const name = ecs.get_name(it.world, entity) orelse continue;
-                const user_id = std.fmt.parseInt(usize, std.mem.span(name), 10) catch unreachable;
+                const user_id = ecs.get(it.world, entity, Player).?.id;
 
                 const p = self.db.session.query(Player).where("id", user_id).findOne() catch {
                     log.warn("db error", .{});
@@ -418,16 +418,16 @@ pub const Game = struct {
                     _ = self.db.session.insert(Player, .{ .id = user_id }) catch log.warn("db error", .{});
                 }
 
-                const info_persisted = self.db.session.query(BasicInfo).where("id", user_id).findOne() catch {
+                const info_persisted = self.db.session.query(Player).where("id", user_id).findOne() catch {
                     log.warn("db error", .{});
                     continue;
                 };
-                const info_mem = ecs.get(it.world, entity, BasicInfo).?;
+                const info_mem = ecs.get(it.world, entity, Player).?;
                 if (info_persisted == null or !std.meta.eql(info_persisted.?, info_mem.*)) {
                     if (info_persisted) |_| {
-                        self.db.session.update(BasicInfo, user_id, info_mem.*) catch log.warn("db error", .{});
+                        self.db.session.update(Player, user_id, info_mem.*) catch log.warn("db error", .{});
                     } else {
-                        _ = self.db.session.insert(BasicInfo, info_mem.*) catch log.warn("db error", .{});
+                        _ = self.db.session.insert(Player, info_mem.*) catch log.warn("db error", .{});
                     }
                 }
 
@@ -455,7 +455,7 @@ pub const Game = struct {
     fn inspectSoulCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments: []const []const u8) void {
         _ = arguments;
 
-        const new_player_name = std.fmt.allocPrintSentinel(ctx.game.allocator, "{}", .{ctx.event.value.sender.user_id}, 0) catch unreachable;
+        const new_player_name = std.fmt.allocPrintSentinel(ctx.game.allocator, "Player_{}", .{ctx.event.value.sender.user_id}, 0) catch unreachable;
         defer ctx.game.allocator.free(new_player_name);
 
         if (ecs.lookup(ctx.game.world.?, new_player_name.ptr) != 0) {
@@ -467,8 +467,8 @@ pub const Game = struct {
         }
 
         const player = ecs.new_entity(ctx.game.world.?, new_player_name);
-        const new_info = BasicInfo.random(&ctx.game.random_source, ctx.event.value.sender.user_id);
-        _ = ecs.set(ctx.game.world.?, player, BasicInfo, new_info);
+        const new_info = Player.random(&ctx.game.random_source, ctx.event.value.sender.user_id);
+        _ = ecs.set(ctx.game.world.?, player, Player, new_info);
 
         const reply_message = std.fmt.allocPrint(ctx.game.allocator, "[CQ:reply,id={}]欢迎踏入仙途，你的灵根是：{s}, 你将从炼气一层开始", .{ ctx.event.value.message_id, new_info.trait.toDisplay() }) catch unreachable;
         defer ctx.game.allocator.free(reply_message);
@@ -490,7 +490,7 @@ pub const Game = struct {
             return;
         }
 
-        const info = ecs.get(ctx.game.world.?, player, BasicInfo);
+        const info = ecs.get(ctx.game.world.?, player, Player);
         if (info == null) {
             ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "请稍后重试") catch {
                 log.warn("failed sending message", .{});
@@ -540,7 +540,7 @@ pub const Game = struct {
             };
             _ = ecs.set(ctx.game.world.?, player, Retreat, r);
 
-            const info = ecs.get_mut(ctx.game.world.?, player, BasicInfo).?;
+            const info = ecs.get_mut(ctx.game.world.?, player, Player).?;
             info.cultivation.modify(result.inner());
             const cultivation_level = info.cultivation.toDisplay(ctx.game.allocator);
             defer ctx.game.allocator.free(cultivation_level);
@@ -745,6 +745,53 @@ pub const Game = struct {
     }
 
     fn joinWorldCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments: []const []const u8) void {
+        _ = ctx;
+        _ = arguments;
+    }
+
+    fn joinSchoolCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments: []const []const u8) void {
+        const player = getPlayer(ctx.game.allocator, ctx.game.world.?, ctx.event.value.sender.user_id);
+
+        if (player == 0) {
+            ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "你还未踏上仙途！") catch {
+                log.warn("failed sending message", .{});
+                return;
+            };
+            return;
+        }
+
+        const info = ecs.get_mut(ctx.game.world.?, player, Player).?;
+        if (info.school != .rogue) {
+            ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "你已经加入其他宗门了 需要叛出现有宗门才能再次加入宗门") catch log.warn("failed sending message", .{});
+            return;
+        }
+
+        const selected_school: School = if (std.mem.eql(u8, School.acacia_sect.toDisplay(), arguments[0]))
+            .acacia_sect
+        else if (std.mem.eql(u8, School.all_souls_sect.toDisplay(), arguments[0]))
+            .all_souls_sect
+        else if (std.mem.eql(u8, School.black_demon.toDisplay(), arguments[0]))
+            .black_demon
+        else if (std.mem.eql(u8, School.star_palace.toDisplay(), arguments[0]))
+            .star_palace
+        else if (std.mem.eql(u8, School.supreme_one_sect.toDisplay(), arguments[0]))
+            .supreme_one_sect
+        else if (std.mem.eql(u8, School.yellow_maple_valley.toDisplay(), arguments[0]))
+            .yellow_maple_valley
+        else {
+            ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "输入不是一个有效的宗门") catch log.warn("failed sending message", .{});
+            return;
+        };
+
+        info.school = selected_school;
+
+        const msg = std.fmt.allocPrint(ctx.game.allocator, "恭喜这位道友，你通过了考验，成功拜入了【{s}】", .{selected_school.toDisplay()}) catch unreachable;
+        defer ctx.game.allocator.free(msg);
+
+        ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, msg) catch log.warn("failed sending message", .{});
+    }
+
+    fn mySchoolCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments: []const []const u8) void {
         _ = ctx;
         _ = arguments;
     }
