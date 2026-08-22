@@ -19,8 +19,8 @@
             .hash = "zenver-0.3.0-U8u2s1pcAAAvF2S2OE2TwhW_F3snF7nBJONNTaBJo-r3",
         },
         .fridge = .{
-            .url = "git+https://github.com/Noodlez1232/fridge#9aa3fc50a0c86dca0dcd7e0023d5765fa30e5964",
-            .hash = "fridge-0.9.5-3GyIimrGAQCY404B3oeRFFxV20lwVY_hWiWlTMhMsXR8",
+            .url = "git+https://github.com/BrokenC1oud/fridge#30dd16c586f4f3c9c7b76ea13d0f20e92af838e4",
+            .hash = "fridge-0.9.5-4uVS7VTTAQBc1haY6VfJHdOu-MTQ9avmeCd5k7VX6dt4",
         },
     },
     .paths = .{

@@ -91,7 +91,7 @@ pub const Game = struct {
     }
 
     pub fn start(self: *@This()) !void {
-        try self.db.migrate();
+        try self.db.registerModel(&.{ Player, BasicInfo, Retreat });
 
         try self.server.start();
 
@@ -103,6 +103,8 @@ pub const Game = struct {
 
         ecs.COMPONENT(self.world.?, BasicInfo);
         ecs.COMPONENT(self.world.?, Retreat);
+
+        try self.loadData();
 
         _ = ecs.ADD_SYSTEM(self.world.?, "event handler system", ecs.OnUpdate, messageEventSystem);
         _ = ecs.ADD_SYSTEM(self.world.?, "retreat in depth system", ecs.OnUpdate, depthRetreatSystem);
@@ -140,6 +142,10 @@ pub const Game = struct {
         }
     }
 
+    const Player = struct {
+        id: usize,
+    };
+
     const BasicInfo = struct {
         id: usize,
         cultivation: Cultivation,
@@ -164,7 +170,11 @@ pub const Game = struct {
         pub fn modify(self: *@This(), m: isize) void {
             switch (self.*) {
                 .refining => |*data| {
-                    data.minor += @intCast(m);
+                    if (m > 0) {
+                        data.minor += @intCast(m);
+                    } else {
+                        data.minor -|= @intCast(-m);
+                    }
                 },
             }
         }
@@ -292,6 +302,24 @@ pub const Game = struct {
         return player;
     }
 
+    fn loadData(self: *@This()) !void {
+        const players = try self.db.session.query(Player).findAll();
+        for (players) |player| {
+            const new_entity_name = std.fmt.allocPrintSentinel(self.allocator, "{}", .{player.id}, 0) catch unreachable;
+            defer self.allocator.free(new_entity_name);
+
+            const entity = ecs.new_entity(self.world.?, new_entity_name);
+
+            if (try self.db.session.find(BasicInfo, player.id)) |info| {
+                _ = ecs.set(self.world.?, entity, BasicInfo, info);
+            }
+
+            if (try self.db.session.find(Retreat, player.id)) |r| {
+                _ = ecs.set(self.world.?, entity, Retreat, r);
+            }
+        }
+    }
+
     //--------------------------------
     // SYSTEM
     //--------------------------------
@@ -374,12 +402,49 @@ pub const Game = struct {
     }
 
     fn saveSystem(it: *ecs.iter_t) void {
+        const self: *@This() = @ptrCast(@alignCast(ecs.get_ctx(it.world)));
+
         var players = ecs.each(it.world, BasicInfo);
         while (ecs.each_next(&players)) {
             for (players.entities()) |entity| {
                 const name = ecs.get_name(it.world, entity) orelse continue;
-                const user_id = std.fmt.parseInt(usize, name, 10) catch unreachable;
-                _ = user_id;
+                const user_id = std.fmt.parseInt(usize, std.mem.span(name), 10) catch unreachable;
+
+                const p = self.db.session.query(Player).where("id", user_id).findOne() catch {
+                    log.warn("db error", .{});
+                    continue;
+                };
+                if (p == null) {
+                    _ = self.db.session.insert(Player, .{ .id = user_id }) catch log.warn("db error", .{});
+                }
+
+                const info_persisted = self.db.session.query(BasicInfo).where("id", user_id).findOne() catch {
+                    log.warn("db error", .{});
+                    continue;
+                };
+                const info_mem = ecs.get(it.world, entity, BasicInfo).?;
+                if (info_persisted == null or !std.meta.eql(info_persisted.?, info_mem.*)) {
+                    if (info_persisted) |_| {
+                        self.db.session.update(BasicInfo, user_id, info_mem.*) catch log.warn("db error", .{});
+                    } else {
+                        _ = self.db.session.insert(BasicInfo, info_mem.*) catch log.warn("db error", .{});
+                    }
+                }
+
+                const retreat_persisted = self.db.session.query(Retreat).where("id", user_id).findOne() catch {
+                    log.warn("db error", .{});
+                    continue;
+                };
+                const retreat_mem = ecs.get(it.world, entity, Retreat);
+                if (retreat_mem) |r| {
+                    if (retreat_persisted == null or !std.meta.eql(retreat_persisted.?, r.*)) {
+                        if (retreat_persisted) |r_p| {
+                            self.db.session.update(Retreat, r_p.id, r.*) catch log.warn("db error", .{});
+                        } else {
+                            _ = self.db.session.insert(Retreat, r.*) catch log.warn("db error", .{});
+                        }
+                    }
+                }
             }
         }
     }
