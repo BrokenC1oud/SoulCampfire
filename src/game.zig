@@ -152,6 +152,7 @@ pub const Game = struct {
         cultivation: Cultivation,
         trait: Trait,
         school: ?SchoolRelation,
+        stone: usize = 0,
 
         fn random(random_source: *std.Random.IoSource, user_id: usize) @This() {
             const random_interface = random_source.interface();
@@ -241,7 +242,18 @@ pub const Game = struct {
             inner,
             /// 外门
             outer,
+
+            fn toDisplay(self: @This()) []const u8 {
+                return switch (self) {
+                    .owner => "宗主",
+                    .elder => "长老",
+                    .disciple => "亲传",
+                    .inner => "内门",
+                    .outer => "外门",
+                };
+            }
         },
+        contribution: usize,
     };
 
     const Retreat = struct {
@@ -279,7 +291,7 @@ pub const Game = struct {
 
     const School = struct {
         id: usize,
-        name: []u8,
+        name: []const u8,
         scale: usize,
         stone: usize,
     };
@@ -780,13 +792,87 @@ pub const Game = struct {
     }
 
     fn joinSchoolCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments: []const []const u8) void {
-        _ = ctx;
-        _ = arguments;
+        const player_entity = getPlayer(ctx.game.allocator, ctx.game.world.?, ctx.event.value.sender.user_id);
+        if (player_entity == 0) {
+            _ = ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "你还未踏上仙途！") catch log.warn("failed sending message", .{});
+            return;
+        }
+
+        const player = ecs.get_mut(ctx.game.world.?, player_entity, Player).?;
+        if (player.school) |_| {
+            ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "你已经加入了其他宗门，叛出已有宗门才能加入新的宗门！") catch log.warn("failed sending message", .{});
+            return;
+        }
+
+        if (arguments.len < 1) {
+            ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "叽里咕噜说什么呢") catch log.warn("failed sending message", .{});
+            return;
+        }
+
+        const school = ctx.game.db.session.query(School).where("name", arguments[0]).findOne() catch {
+            log.warn("db error", .{});
+            return;
+        };
+
+        if (school) |s| {
+            player.school = .{ .id = s.id, .role = .outer, .contribution = 0 };
+
+            const msg = std.fmt.allocPrint(ctx.game.allocator, "欢迎师弟加入了宗门【{s}】，共参天道。", .{s.name}) catch unreachable;
+            defer ctx.game.allocator.free(msg);
+
+            ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, msg) catch log.warn("failed sending message", .{});
+            return;
+        } else {
+            const msg = std.fmt.allocPrint(ctx.game.allocator, "你要加入的宗门【{s}】不存在", .{arguments[0]}) catch unreachable;
+            defer ctx.game.allocator.free(msg);
+
+            ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, msg) catch log.warn("failed sending message", .{});
+            return;
+        }
     }
 
     fn mySchoolCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments: []const []const u8) void {
-        _ = ctx;
         _ = arguments;
+
+        const player_entity = getPlayer(ctx.game.allocator, ctx.game.world.?, ctx.event.value.sender.user_id);
+        if (player_entity == 0) {
+            _ = ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "你还未踏上仙途！") catch log.warn("failed sending message", .{});
+            return;
+        }
+
+        const player = ecs.get(ctx.game.world.?, player_entity, Player).?;
+        if (player.school) |school_r| {
+            const school = getPlayerSchool(ctx.game.allocator, ctx.game.world.?, school_r);
+
+            const school_rank = ctx.game.db.session.raw(
+                \\WITH RankedSchool AS (
+                \\    SELECT
+                \\        id,
+                \\        scale,
+                \\        row_number() over (ORDER BY scale) AS rank_num
+                \\    FROM School
+                \\)
+                \\SELECT rank_num
+                \\FROM RankedSchool
+                \\WHERE id = ?
+            , .{school.id}).get(usize) catch {
+                log.warn("db error", .{});
+                return;
+            };
+
+            const msg = std.fmt.allocPrint(ctx.game.allocator,
+                \\你所在的宗门：
+                \\宗门名讳：{s}
+                \\道友职位：{s}
+                \\宗门建设度：{}
+                \\宗门排名：{}
+            , .{ school.name, school_r.role.toDisplay(), school.scale, school_rank.? }) catch unreachable;
+            defer ctx.game.allocator.free(msg);
+
+            ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, msg) catch log.warn("failed sending message", .{});
+        } else {
+            ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "一介散修，莫要再问") catch log.warn("failed sending message", .{});
+        }
     }
 };
 
