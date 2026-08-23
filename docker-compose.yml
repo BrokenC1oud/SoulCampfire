@@ -1,0 +1,12 @@
+services:
+  soulcampfire:
+    image: ghcr.io/${GITHUB_REPOSITORY:-brokenc1oud/soulcampfire}:latest
+    build:
+      context: .
+    restart: unless-stopped
+    volumes:
+      # Zenver reads this file on startup. Keep it outside the image.
+      - ./.env:/app/.env:ro
+      - ./data:/app/data
+    ports:
+      - "5700:5700"

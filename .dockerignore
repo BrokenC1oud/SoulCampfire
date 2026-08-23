@@ -1,0 +1,12 @@
+.env
+.git
+.gitignore
+.idea
+.vscode
+.zig-cache
+zig-out
+zig-pkg
+*.db
+*.db-shm
+*.db-wal
+README.md

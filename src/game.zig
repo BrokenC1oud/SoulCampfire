@@ -67,7 +67,7 @@ pub const Game = struct {
 
         self.random_source = .{ .io = self.io };
 
-        self.db = try .init(self.allocator, self.io, "soul_campfire.db");
+        self.db = try .init(self.allocator, self.io, "data/soul_campfire.db");
         errdefer self.db.deinit();
     }
 
@@ -295,6 +295,8 @@ pub const Game = struct {
         scale: usize,
         stone: usize,
     };
+
+    const InventoryItem = struct {};
 
     fn retreat(world: *ecs.world_t, player: u64, io: Io, random: std.Random) ?RetreatResult {
         const active_retreat = ecs.get(world, player, Retreat);
