@@ -1,6 +1,6 @@
 services:
   soulcampfire:
-    image: ghcr.io/${GITHUB_REPOSITORY:-brokenc1oud/soulcampfire}:latest
+    image: ghcr.io/brokenc1oud/soulcampfire:latest
     build:
       context: .
     restart: unless-stopped

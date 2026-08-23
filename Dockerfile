@@ -19,7 +19,7 @@ WORKDIR /src
 COPY build.zig build.zig.zon ./
 COPY src ./src
 
-RUN zig build -Doptimize=ReleaseSafe
+RUN zig build
 
 FROM docker.io/library/debian:bookworm-slim AS runtime
 
