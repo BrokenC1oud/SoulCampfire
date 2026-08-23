@@ -19,21 +19,26 @@ WORKDIR /src
 COPY build.zig build.zig.zon ./
 COPY src ./src
 
-RUN zig build
+RUN --mount=type=cache,id=soulcampfire-zig-build-cache,target=/src/.zig-cache \
+    --mount=type=cache,id=soulcampfire-zig-global-cache,target=/root/.cache/zig \
+    zig build
 
 FROM docker.io/library/debian:bookworm-slim AS runtime
 
-RUN groupadd --system --gid 10001 soulcampfire \
+RUN apt-get update \
+    && apt-get install --no-install-recommends --yes gosu \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --system --gid 10001 soulcampfire \
     && useradd --system --uid 10001 --gid 10001 --home-dir /app --no-create-home soulcampfire \
     && mkdir -p /app/data \
     && chown -R soulcampfire:soulcampfire /app
 
 WORKDIR /app
 COPY --from=build /src/zig-out/bin/SoulCampfire /app/SoulCampfire
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod 0755 /usr/local/bin/docker-entrypoint.sh
 
 ENV ZIG_GLOBAL_CACHE_DIR=/tmp/zig-cache
 EXPOSE 5700
 VOLUME ["/app/data"]
-USER soulcampfire
-
-ENTRYPOINT ["/app/SoulCampfire"]
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
