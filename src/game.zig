@@ -32,6 +32,8 @@ pub const Game = struct {
 
     db: SoulCampfire.db.Db,
 
+    registry: SoulCampfire.registry.Registry,
+
     pub fn init(self: *@This(), allocator: Allocator, io: Io, env: *Zenver) !void {
         self.* = undefined;
         self.allocator = allocator;
@@ -67,8 +69,10 @@ pub const Game = struct {
 
         self.random_source = .{ .io = self.io };
 
-        self.db = try .init(self.allocator, self.io, "data/soul_campfire.db");
+        self.db = try .init(self.allocator, self.io, "soul_campfire.db");
         errdefer self.db.deinit();
+
+        self.registry = .init(self.allocator, self.io);
     }
 
     pub fn deinit(self: *@This()) void {
@@ -86,12 +90,15 @@ pub const Game = struct {
         self.allocator.free(self.event_queue_buffer);
 
         self.db.deinit();
+        self.registry.deinit();
 
         self.* = undefined;
     }
 
     pub fn start(self: *@This()) !void {
-        try self.db.registerModel(&.{ Player, Retreat, School });
+        try self.db.registerModel(&.{ Player, Retreat, School, InventoryItem });
+
+        try self.registry.load();
 
         try self.server.start();
 
@@ -126,6 +133,8 @@ pub const Game = struct {
 
         try self.command_parser.register("拜入宗门", joinSchoolCommand);
         try self.command_parser.register("我的宗门", mySchoolCommand);
+
+        try self.command_parser.register("我的背包", myBackpackCommand);
     }
 
     pub fn registerSignal(self: *@This()) void {
@@ -296,7 +305,12 @@ pub const Game = struct {
         stone: usize,
     };
 
-    const InventoryItem = struct {};
+    const InventoryItem = struct {
+        id: usize,
+        user_id: usize,
+        item_id: []const u8,
+        count: usize,
+    };
 
     fn retreat(world: *ecs.world_t, player: u64, io: Io, random: std.Random) ?RetreatResult {
         const active_retreat = ecs.get(world, player, Retreat);
@@ -875,6 +889,36 @@ pub const Game = struct {
         } else {
             ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "一介散修，莫要再问") catch log.warn("failed sending message", .{});
         }
+    }
+
+    fn myBackpackCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments: []const []const u8) void {
+        _ = arguments;
+
+        const player_entity = getPlayer(ctx.game.allocator, ctx.game.world.?, ctx.event.value.sender.user_id);
+        if (player_entity == 0) {
+            _ = ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "你还未踏上仙途！") catch log.warn("failed sending message", .{});
+            return;
+        }
+
+        const items = ctx.game.db.session.query(InventoryItem).where("user_id", ctx.event.value.sender.user_id).findAll() catch {
+            log.warn("db error", .{});
+            return;
+        };
+
+        var msg: Io.Writer.Allocating = .init(ctx.game.allocator);
+        defer msg.deinit();
+
+        if (items.len > 0) {
+            msg.writer.print("你的背包：\n", .{}) catch unreachable;
+            for (items) |inv_item| {
+                const item = ctx.game.registry.items.?.get(inv_item.item_id).?;
+                msg.writer.print("{s} * {}\n", .{ item.name, inv_item.count }) catch unreachable;
+            }
+        } else {
+            msg.writer.print("道友的背包空空如也！", .{}) catch unreachable;
+        }
+
+        ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, msg.written()) catch log.warn("failed sending message", .{});
     }
 };
 
