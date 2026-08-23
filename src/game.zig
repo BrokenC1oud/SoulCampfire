@@ -96,7 +96,7 @@ pub const Game = struct {
     }
 
     pub fn start(self: *@This()) !void {
-        try self.db.registerModel(&.{ Player, Retreat, School, InventoryItem });
+        try self.db.registerModel(&.{ Player, CheckIn, Retreat, School, InventoryItem });
 
         try self.registry.load();
 
@@ -123,6 +123,7 @@ pub const Game = struct {
         try self.command_parser.register("检测灵根", inspectSoulCommand);
         try self.command_parser.register("我的灵根", mySoulCommand);
 
+        try self.command_parser.register("修仙签到", checkInCommand);
         try self.command_parser.register("闭关修炼", retreatCommand);
         try self.command_parser.register("服用", tookDrugCommand);
         try self.command_parser.register("深度闭关", retreatInDepthCommand);
@@ -310,6 +311,13 @@ pub const Game = struct {
         user_id: usize,
         item_id: []const u8,
         count: usize,
+    };
+
+    const CheckIn = struct {
+        id: usize,
+        user_id: usize,
+        day: u47,
+        stone: usize,
     };
 
     fn retreat(world: *ecs.world_t, player: u64, io: Io, random: std.Random) ?RetreatResult {
@@ -562,12 +570,14 @@ pub const Game = struct {
             \\宗门：{s}
             \\灵根：{s}
             \\修为：{}/{}
+            \\灵石：{}
         , .{
             ctx.event.value.sender.nickname.?,
             if (info.?.school) |school| getPlayerSchool(ctx.game.allocator, ctx.game.world.?, school).name else "散修",
             info.?.trait.toDisplay(),
             info.?.cultivation.minor(),
             info.?.cultivation.max(),
+            info.?.stone,
         }) catch unreachable;
         defer ctx.game.allocator.free(reply_msg);
 
@@ -575,6 +585,53 @@ pub const Game = struct {
             log.warn("failed sending messages", .{});
             return;
         };
+    }
+
+    fn checkInCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments: []const []const u8) void {
+        _ = arguments;
+
+        const player_entity = getPlayer(ctx.game.allocator, ctx.game.world.?, ctx.event.value.sender.user_id);
+        if (player_entity == 0) {
+            _ = ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "你还未踏上仙途！") catch log.warn("failed sending message", .{});
+            return;
+        }
+
+        const now = Io.Clock.real.now(ctx.game.io).toSeconds();
+        const epoch: std.time.epoch.EpochSeconds = .{ .secs = @intCast(now) };
+        const epoch_day = epoch.getEpochDay();
+
+        const check_in_his = ctx.game.db.session.query(CheckIn).where("user_id", ctx.event.value.sender.user_id).where("day", epoch_day.day).findOne() catch {
+            log.warn("db error", .{});
+            return;
+        };
+
+        if (check_in_his) |history| {
+            const msg = std.fmt.allocPrint(ctx.game.allocator, "你今天已经签到过了 获得了{}灵石", .{history.stone}) catch unreachable;
+            defer ctx.game.allocator.free(msg);
+
+            ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, msg) catch log.warn("failed sending message", .{});
+        } else {
+            const check_id = ctx.game.db.session.insert(CheckIn, .{
+                .user_id = ctx.event.value.sender.user_id,
+                .day = epoch_day.day,
+                .stone = ctx.game.random_source.interface().intRangeAtMost(usize, 200000, 500000),
+            }) catch {
+                log.warn("db error", .{});
+                return;
+            };
+            const check = ctx.game.db.session.find(CheckIn, check_id) catch {
+                log.warn("db error", .{});
+                return;
+            } orelse unreachable;
+
+            const player = ecs.get_mut(ctx.game.world.?, player_entity, Player).?;
+            player.stone += check.stone;
+
+            const msg = std.fmt.allocPrint(ctx.game.allocator, "签到成功，获得了{}块灵石", .{check.stone}) catch unreachable;
+            defer ctx.game.allocator.free(msg);
+
+            ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, msg) catch log.warn("failed sending message", .{});
+        }
     }
 
     fn retreatCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments: []const []const u8) void {
