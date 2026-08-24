@@ -122,6 +122,8 @@ pub const Game = struct {
 
         try self.command_parser.register("检测灵根", inspectSoulCommand);
         try self.command_parser.register("我的灵根", mySoulCommand);
+        try self.command_parser.register("修仙排行榜", rankCommand);
+        try self.command_parser.register("改名", changeNameCommand);
 
         try self.command_parser.register("修仙签到", checkInCommand);
         try self.command_parser.register("闭关修炼", retreatCommand);
@@ -163,61 +165,47 @@ pub const Game = struct {
         trait: Trait,
         school: ?SchoolRelation,
         stone: usize = 0,
+        name: ?[]const u8,
 
-        fn random(random_source: *std.Random.IoSource, user_id: usize) @This() {
+        fn random(random_source: *std.Random.IoSource, registry: *SoulCampfire.registry.Registry, user_id: usize) @This() {
             const random_interface = random_source.interface();
 
             return .{
                 .id = user_id,
-                .cultivation = .{ .refining = .{ .level = 1, .minor = 0 } },
+                .cultivation = .{ .level_id = registry.getLevelByLevel(0).key_ptr.*, .minor = 0, .inner = 100 },
                 .trait = random_interface.enumValue(Trait),
                 .school = null,
+                .name = null,
             };
         }
     };
 
-    const Cultivation = union(enum) {
-        refining: struct { level: usize, minor: usize },
+    const Cultivation = struct {
+        level_id: []const u8,
+        minor: u2,
+        inner: usize,
 
-        pub fn modify(self: *@This(), m: isize) void {
-            switch (self.*) {
-                .refining => |*data| {
-                    if (m > 0) {
-                        data.minor += @intCast(m);
-                    } else {
-                        data.minor -|= @intCast(-m);
-                    }
-                },
+        fn modify(self: *@This(), m: isize) void {
+            if (m > 0) {
+                self.inner +|= @intCast(m);
+            } else {
+                self.inner -|= @intCast(-m);
             }
         }
 
-        pub fn max(self: @This()) usize {
-            return switch (self) {
-                .refining => 100,
+        fn toDisplay(self: *@This(), allocator: Allocator, registry: *SoulCampfire.registry.Registry) []const u8 {
+            const major = registry.levels.?.get(self.level_id).?;
+            const minor = switch (self.minor) {
+                0 => "初期",
+                1 => "中期",
+                2 => "圆满",
+                else => @panic("you shouldn't be there"),
             };
-        }
-
-        pub fn level(self: @This()) usize {
-            switch (self) {
-                inline else => |val| return val.level,
-            }
-        }
-
-        pub fn minor(self: @This()) usize {
-            switch (self) {
-                inline else => |val| return val.minor,
-            }
-        }
-
-        pub fn levelName(self: @This()) []const u8 {
-            return switch (self) {
-                .refining => "练气",
-            };
-        }
-
-        pub fn toDisplay(self: @This(), allocator: std.mem.Allocator) []u8 {
-            const num_str = SoulCampfire.utils.chineseNumbers[self.level()];
-            return std.fmt.allocPrint(allocator, "{s}{s}层", .{ self.levelName(), num_str }) catch unreachable;
+            const result = if (major.extensible)
+                std.fmt.allocPrint(allocator, "{s}{s}", .{ major.name, minor }) catch unreachable
+            else
+                std.fmt.allocPrint(allocator, "{s}", .{major.name}) catch unreachable;
+            return result;
         }
     };
 
@@ -533,7 +521,7 @@ pub const Game = struct {
         }
 
         const player = ecs.new_entity(ctx.game.world.?, new_player_name);
-        const new_info = Player.random(&ctx.game.random_source, ctx.event.value.sender.user_id);
+        const new_info = Player.random(&ctx.game.random_source, &ctx.game.registry, ctx.event.value.sender.user_id);
         _ = ecs.set(ctx.game.world.?, player, Player, new_info);
 
         const reply_message = std.fmt.allocPrint(ctx.game.allocator, "[CQ:reply,id={}]欢迎踏入仙途，你的灵根是：{s}, 你将从炼气一层开始", .{ ctx.event.value.message_id, new_info.trait.toDisplay() }) catch unreachable;
@@ -569,14 +557,13 @@ pub const Game = struct {
             \\{s} 的天命玉牒：
             \\宗门：{s}
             \\灵根：{s}
-            \\修为：{}/{}
+            \\修为：{}
             \\灵石：{}
         , .{
-            ctx.event.value.sender.nickname.?,
+            if (info.?.name) |na| na else ctx.event.value.sender.nickname.?,
             if (info.?.school) |school| getPlayerSchool(ctx.game.allocator, ctx.game.world.?, school).name else "散修",
             info.?.trait.toDisplay(),
-            info.?.cultivation.minor(),
-            info.?.cultivation.max(),
+            info.?.cultivation.inner,
             info.?.stone,
         }) catch unreachable;
         defer ctx.game.allocator.free(reply_msg);
@@ -657,7 +644,7 @@ pub const Game = struct {
 
             const info = ecs.get_mut(ctx.game.world.?, player, Player).?;
             info.cultivation.modify(result.inner());
-            const cultivation_level = info.cultivation.toDisplay(ctx.game.allocator);
+            const cultivation_level = info.cultivation.toDisplay(ctx.game.allocator, &ctx.game.registry);
             defer ctx.game.allocator.free(cultivation_level);
 
             const reply_message = switch (result) {
@@ -667,15 +654,14 @@ pub const Game = struct {
                     \\本次闭关，你的修为最终增加了{}点。
                     \\
                     \\当前境界：{s}
-                    \\当前修为：{}/{}
+                    \\当前修为：{}
                     \\
                     \\你感到一阵疲惫，需要打坐休息{}分钟才能再次闭关。
                 , .{
                     result.inner(),
                     result.inner(),
                     cultivation_level,
-                    info.cultivation.minor(),
-                    info.cultivation.max(),
+                    info.cultivation.inner,
                     time_took,
                 }),
                 .fail => std.fmt.allocPrint(ctx.game.allocator,
@@ -683,14 +669,13 @@ pub const Game = struct {
                     \\你心浮气躁，无法凝神，白白浪费了灵气。你的修为减少了{}点。
                     \\
                     \\当前境界：{s}
-                    \\当前修为：{}/{}
+                    \\当前修为：{}
                     \\
                     \\你感到一阵疲惫，需要打坐休息{}分钟才能再次闭关。
                 , .{
                     -result.inner(),
                     cultivation_level,
-                    info.cultivation.minor(),
-                    info.cultivation.max(),
+                    info.cultivation.inner,
                     time_took,
                 }),
                 .deviation => std.fmt.allocPrint(ctx.game.allocator,
@@ -698,14 +683,13 @@ pub const Game = struct {
                     \\你闭关之时，心魔入侵，道心受损！灵气反噬之下，你的修为倒退了{}点！
                     \\
                     \\当前境界：{s}
-                    \\当前修为：{}/{}
+                    \\当前修为：{}
                     \\关: 提前结束，但收益会大打折扣 
                     \\你感到一阵疲惫，需要打坐休息{}分钟才能再次闭关。
                 , .{
                     -result.inner(),
                     cultivation_level,
-                    info.cultivation.minor(),
-                    info.cultivation.max(),
+                    info.cultivation.inner,
                     time_took,
                 }),
             } catch unreachable;
@@ -976,6 +960,87 @@ pub const Game = struct {
         }
 
         ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, msg.written()) catch log.warn("failed sending message", .{});
+    }
+
+    fn rankCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments: []const []const u8) void {
+        _ = arguments;
+
+        const RankEntry = struct {
+            player: Player,
+            level: usize,
+
+            fn lessThan(_: void, lhs: @This(), rhs: @This()) bool {
+                if (lhs.level != rhs.level) return lhs.level > rhs.level;
+                if (lhs.player.cultivation.inner != rhs.player.cultivation.inner) {
+                    return lhs.player.cultivation.inner > rhs.player.cultivation.inner;
+                }
+                return lhs.player.id < rhs.player.id;
+            }
+        };
+
+        var entries = std.ArrayList(RankEntry).initCapacity(ctx.game.allocator, 0) catch unreachable;
+        defer entries.deinit(ctx.game.allocator);
+
+        var players = ecs.each(ctx.game.world.?, Player);
+        while (ecs.each_next(&players)) {
+            for (players.entities()) |entity| {
+                const player = ecs.get(ctx.game.world.?, entity, Player).?;
+                const level = ctx.game.registry.levels.?.get(player.cultivation.level_id) orelse continue;
+                entries.append(ctx.game.allocator, .{
+                    .player = player.*,
+                    .level = level.level,
+                }) catch unreachable;
+            }
+        }
+
+        std.sort.block(RankEntry, entries.items, void{}, RankEntry.lessThan);
+
+        var message: Io.Writer.Allocating = .init(ctx.game.allocator);
+        defer message.deinit();
+
+        message.writer.print("【修仙排行榜】\n", .{}) catch unreachable;
+        const count = @min(entries.items.len, 10);
+        for (entries.items[0..count], 0..) |entry, index| {
+            const level = ctx.game.registry.levels.?.get(entry.player.cultivation.level_id).?;
+            const user_id = std.fmt.allocPrint(ctx.game.allocator, "{}", .{entry.player.id}) catch unreachable;
+            defer ctx.game.allocator.free(user_id);
+
+            message.writer.print("{}. {s} {s} 修为：{}\n", .{
+                index + 1,
+                if (entry.player.name) |na| na else user_id,
+                level.name,
+                entry.player.cultivation.inner,
+            }) catch unreachable;
+        }
+
+        if (count == 0) message.writer.print("暂无修士上榜\n", .{}) catch unreachable;
+
+        ctx.game.client.groupReply(
+            ctx.event.value.group_id,
+            ctx.event.value.message_id,
+            message.written(),
+        ) catch log.warn("failed sending messages", .{});
+    }
+
+    fn changeNameCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments: []const []const u8) void {
+        const player_entity = getPlayer(ctx.game.allocator, ctx.game.world.?, ctx.event.value.sender.user_id);
+        if (player_entity == 0) {
+            _ = ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "你还未踏上仙途！") catch log.warn("failed sending message", .{});
+            return;
+        }
+
+        if (arguments.len < 1 or arguments[0].len == 0) {
+            ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "叽里咕噜说什么呢") catch log.warn("failed sending message", .{});
+            return;
+        }
+
+        const player = ecs.get_mut(ctx.game.world.?, player_entity, Player).?;
+        player.name = ctx.game.db.session.arena.dupe(u8, arguments[0]) catch {
+            log.warn("db error", .{});
+            return;
+        };
+
+        ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "改名成功!") catch log.warn("failed sending message", .{});
     }
 };
 

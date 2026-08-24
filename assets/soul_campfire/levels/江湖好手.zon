@@ -1,0 +1,6 @@
+.{
+    .level = 0,
+    .extensible = false,
+    .requirement = 0,
+    .ratio = 1,
+}

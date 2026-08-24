@@ -1,0 +1,6 @@
+.{
+    .level = 1,
+    .extensible = true,
+    .requirement = 2000,
+    .ratio = 1.2,
+}
