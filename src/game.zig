@@ -277,11 +277,11 @@ pub const Game = struct {
             const roll = random.intRangeLessThan(usize, 0, 100);
 
             return if (roll < 70)
-                .{ .success = random.intRangeAtMost(isize, 15, 100) }
+                .{ .success = random.intRangeAtMost(isize, 300, 500) }
             else if (roll < 97)
-                .{ .fail = -random.intRangeAtMost(isize, 5, 35) }
+                .{ .fail = -random.intRangeAtMost(isize, 75, 200) }
             else
-                .{ .deviation = -random.intRangeAtMost(isize, 30, 100) };
+                .{ .deviation = -random.intRangeAtMost(isize, 100, 400) };
         }
 
         fn inner(self: @This()) isize {
@@ -1136,7 +1136,6 @@ pub const Game = struct {
                 player.cultivation.level_id = ctx.game.registry.getLevelByLevel(next_level.level).?.key_ptr.*;
                 player.cultivation.minor = 0;
             }
-            player.cultivation.inner -= next_level.requirement;
             player.break_out_bonus = 0;
 
             const cultivation_level = player.cultivation.toDisplay(ctx.game.allocator, &ctx.game.registry);
