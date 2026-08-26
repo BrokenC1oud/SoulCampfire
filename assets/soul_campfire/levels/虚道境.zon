@@ -3,4 +3,5 @@
     .extensible = true,
     .requirement = 70968000,
     .ratio = 16,
+    .breakout_rate = 10,
 }

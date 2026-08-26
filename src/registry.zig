@@ -27,6 +27,7 @@ const LevelDefinition = struct {
     extensible: bool,
     requirement: usize,
     ratio: f64,
+    breakout_rate: usize,
 
     name: []const u8 = "",
 };
@@ -143,10 +144,10 @@ pub const Registry = struct {
         self.* = undefined;
     }
 
-    pub fn getLevelByLevel(self: *@This(), level: usize) std.StringHashMap(LevelDefinition).Entry {
+    pub fn getLevelByLevel(self: *@This(), level: usize) ?std.StringHashMap(LevelDefinition).Entry {
         var level_iter = self.levels.?.iterator();
         return while (level_iter.next()) |entry| {
             if (entry.value_ptr.level == level) break entry;
-        } else @panic("data corrupted");
+        } else null;
     }
 };

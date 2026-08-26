@@ -43,6 +43,11 @@ pub const Db = struct {
 
                 if (!nullable(field.type)) migration = migration ++ " NOT NULL";
 
+                if (field.default_value_ptr) |default| {
+                    const de: *const usize = @ptrCast(@alignCast(default));
+                    migration = migration ++ " DEFAULT " ++ std.fmt.comptimePrint("{}", .{de.*});
+                }
+
                 first = false;
             }
 

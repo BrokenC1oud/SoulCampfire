@@ -124,6 +124,8 @@ pub const Game = struct {
         try self.command_parser.register("我的灵根", mySoulCommand);
         try self.command_parser.register("修仙排行榜", rankCommand);
         try self.command_parser.register("改名", changeNameCommand);
+        try self.command_parser.register("突破", breakOutCommand);
+        try self.command_parser.register("直接突破", directBreakOutCommand);
 
         try self.command_parser.register("修仙签到", checkInCommand);
         try self.command_parser.register("闭关修炼", retreatCommand);
@@ -166,13 +168,15 @@ pub const Game = struct {
         school: ?SchoolRelation,
         stone: usize = 0,
         name: ?[]const u8,
+        break_out_bonus: f64 = 0,
+        last_breakout: i64 = 0,
 
         fn random(random_source: *std.Random.IoSource, registry: *SoulCampfire.registry.Registry, user_id: usize) @This() {
             const random_interface = random_source.interface();
 
             return .{
                 .id = user_id,
-                .cultivation = .{ .level_id = registry.getLevelByLevel(0).key_ptr.*, .minor = 0, .inner = 100 },
+                .cultivation = .{ .level_id = registry.getLevelByLevel(0).?.key_ptr.*, .minor = 0, .inner = 100 },
                 .trait = random_interface.enumValue(Trait),
                 .school = null,
                 .name = null,
@@ -1041,6 +1045,126 @@ pub const Game = struct {
         };
 
         ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "改名成功!") catch log.warn("failed sending message", .{});
+    }
+
+    fn breakOutCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments: []const []const u8) void {
+        _ = arguments;
+
+        const player_entity = getPlayer(ctx.game.allocator, ctx.game.world.?, ctx.event.value.sender.user_id);
+        if (player_entity == 0) {
+            _ = ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "你还未踏上仙途！") catch log.warn("failed sending message", .{});
+            return;
+        }
+
+        const player = ecs.get(ctx.game.world.?, player_entity, Player).?;
+        const level = ctx.game.registry.levels.?.get(player.cultivation.level_id).?;
+        const next_level = if (level.extensible) switch (player.cultivation.minor) {
+            0, 1 => level,
+            2 => if (ctx.game.registry.getLevelByLevel(level.level + 1)) |ne| ne.value_ptr.* else {
+                ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "你已经到达了最高境界，无法继续突破") catch log.warn("failed sending message", .{});
+                return;
+            },
+            else => @panic("how did you get there"),
+        } else if (ctx.game.registry.getLevelByLevel(level.level + 1)) |ne| ne.value_ptr.* else {
+            ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "你已经到达了最高境界，无法继续突破") catch log.warn("failed sending message", .{});
+            return;
+        };
+        if (player.cultivation.inner < next_level.requirement) {
+            ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "你的修为还没有达到下一境界的要求，继续修炼") catch log.warn("failed sending message", .{});
+            return;
+        }
+        if (Io.Clock.real.now(ctx.game.io).toSeconds() - player.last_breakout < std.time.s_per_hour) {
+            ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "你的突破还在冷却中，请稍候") catch log.warn("failed sending message", .{});
+            return;
+        }
+        // TODO: 背包物品特殊加成
+        const breakout_bonus: usize = @intFromFloat(player.break_out_bonus * 100);
+        const success_rate = level.breakout_rate + breakout_bonus;
+
+        const msg = std.fmt.allocPrint(ctx.game.allocator, "你当前突破到 {s} 境界的概率为{}%，输入`.直接突破`进行突破", .{ next_level.name, success_rate }) catch unreachable;
+        defer ctx.game.allocator.free(msg);
+
+        ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, msg) catch log.warn("failed sending message", .{});
+    }
+
+    fn directBreakOutCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments: []const []const u8) void {
+        _ = arguments;
+
+        const player_entity = getPlayer(ctx.game.allocator, ctx.game.world.?, ctx.event.value.sender.user_id);
+        if (player_entity == 0) {
+            _ = ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "你还未踏上仙途！") catch log.warn("failed sending message", .{});
+            return;
+        }
+
+        const player = ecs.get_mut(ctx.game.world.?, player_entity, Player).?;
+        const level = ctx.game.registry.levels.?.get(player.cultivation.level_id).?;
+        const next_level = if (level.extensible) switch (player.cultivation.minor) {
+            0, 1 => level,
+            2 => if (ctx.game.registry.getLevelByLevel(level.level + 1)) |ne| ne.value_ptr.* else {
+                ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "你已经到达了最高境界，无法继续突破") catch log.warn("failed sending message", .{});
+                return;
+            },
+            else => @panic("how did you get there"),
+        } else if (ctx.game.registry.getLevelByLevel(level.level + 1)) |ne| ne.value_ptr.* else {
+            ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "你已经到达了最高境界，无法继续突破") catch log.warn("failed sending message", .{});
+            return;
+        };
+
+        if (player.cultivation.inner < next_level.requirement) {
+            ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "你的修为还没有达到下一境界的要求，继续修炼") catch log.warn("failed sending message", .{});
+            return;
+        }
+        if (Io.Clock.real.now(ctx.game.io).toSeconds() - player.last_breakout < std.time.s_per_hour) {
+            ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "你的突破还在冷却中，请稍候") catch log.warn("failed sending message", .{});
+            return;
+        }
+        // TODO: 背包物品特殊加成
+        const breakout_bonus: usize = @intFromFloat(player.break_out_bonus * 100);
+        const success_rate = level.breakout_rate + breakout_bonus;
+
+        const r = ctx.game.random_source.interface().intRangeLessThan(usize, 0, 100);
+        const success = r < success_rate;
+        const now = Io.Clock.real.now(ctx.game.io).toSeconds();
+
+        player.last_breakout = now;
+
+        if (success) {
+            const previous_level = level.name;
+            if (level.extensible and player.cultivation.minor < 2) {
+                player.cultivation.minor += 1;
+            } else {
+                player.cultivation.level_id = ctx.game.registry.getLevelByLevel(next_level.level).?.key_ptr.*;
+                player.cultivation.minor = 0;
+            }
+            player.cultivation.inner -= next_level.requirement;
+            player.break_out_bonus = 0;
+
+            const cultivation_level = player.cultivation.toDisplay(ctx.game.allocator, &ctx.game.registry);
+            defer ctx.game.allocator.free(cultivation_level);
+
+            const message = std.fmt.allocPrint(ctx.game.allocator,
+                \\【突破成功】
+                \\你成功突破了{s}，踏入{s}！
+                \\当前境界：{s}
+                \\当前修为：{}
+            , .{ previous_level, next_level.name, cultivation_level, player.cultivation.inner }) catch unreachable;
+            defer ctx.game.allocator.free(message);
+
+            ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, message) catch log.warn("failed sending message", .{});
+        } else {
+            player.break_out_bonus += 0.3;
+
+            const next_bonus: usize = @intFromFloat(player.break_out_bonus * 100);
+            const message = std.fmt.allocPrint(ctx.game.allocator,
+                \\【突破失败】
+                \\你冲击{s}境界失败了，气血翻涌，境界没有变化。
+                \\下次突破成功率额外增加{}%。
+                \\突破冷却一小时后方可再次尝试。
+            , .{ next_level.name, next_bonus }) catch unreachable;
+            defer ctx.game.allocator.free(message);
+
+            ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, message) catch log.warn("failed sending message", .{});
+        }
     }
 };
 
