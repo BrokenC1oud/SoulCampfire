@@ -126,6 +126,7 @@ pub const Game = struct {
         try self.command_parser.register("改名", changeNameCommand);
         try self.command_parser.register("突破", breakOutCommand);
         try self.command_parser.register("直接突破", directBreakOutCommand);
+        try self.command_parser.register("送灵石", giveStoneCommand);
 
         try self.command_parser.register("修仙签到", checkInCommand);
         try self.command_parser.register("闭关修炼", retreatCommand);
@@ -1145,8 +1146,7 @@ pub const Game = struct {
                 \\【突破成功】
                 \\你成功突破了{s}，踏入{s}！
                 \\当前境界：{s}
-                \\当前修为：{}
-            , .{ previous_level, next_level.name, cultivation_level, player.cultivation.inner }) catch unreachable;
+            , .{ previous_level, next_level.name, cultivation_level }) catch unreachable;
             defer ctx.game.allocator.free(message);
 
             ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, message) catch log.warn("failed sending message", .{});
@@ -1164,6 +1164,62 @@ pub const Game = struct {
 
             ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, message) catch log.warn("failed sending message", .{});
         }
+    }
+
+    fn giveStoneCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments: []const []const u8) void {
+        const player_entity = getPlayer(ctx.game.allocator, ctx.game.world.?, ctx.event.value.sender.user_id);
+        if (player_entity == 0) {
+            _ = ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "你还未踏上仙途！") catch log.warn("failed sending message", .{});
+            return;
+        }
+
+        const player = ecs.get_mut(ctx.game.world.?, player_entity, Player).?;
+
+        if (arguments.len < 2 or ctx.event.value.message.len < 2) {
+            ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "叽里咕噜说什么呢") catch log.warn("failed sending message", .{});
+            return;
+        }
+
+        if (ctx.event.value.message[1] != .at) {
+            ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "不是有效的at") catch log.warn("failed sending message", .{});
+            return;
+        }
+
+        const amount = std.fmt.parseInt(usize, arguments[0], 10) catch {
+            ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "输入的灵石数量无效") catch log.warn("failed sending message", .{});
+            return;
+        };
+
+        if (player.stone < amount) {
+            ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "你的灵石余额不足") catch log.warn("failed sending message", .{});
+            return;
+        }
+
+        const target_user_id = std.fmt.parseInt(usize, ctx.event.value.message[1].at.data.object.get("qq").?.string, 10) catch unreachable;
+
+        if (player.id == target_user_id) {
+            ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "请不要将灵石赠送给自己") catch log.warn("failed sending message", .{});
+            return;
+        }
+
+        const target_player_entity = getPlayer(ctx.game.allocator, ctx.game.world.?, target_user_id);
+
+        if (target_player_entity == 0) {
+            ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "对方还没有踏入仙界，快去邀请吧") catch log.warn("failed sending message", .{});
+            return;
+        }
+
+        const target_player = ecs.get_mut(ctx.game.world.?, target_player_entity, Player).?;
+
+        target_player.stone += amount;
+        player.stone -= amount;
+
+        const user_id_str = std.fmt.allocPrint(ctx.game.allocator, "{}", .{target_player.id}) catch unreachable;
+        defer ctx.game.allocator.free(user_id_str);
+        const msg = std.fmt.allocPrint(ctx.game.allocator, "成功赠送了 {} 灵石给 {s}", .{ amount, target_player.name orelse user_id_str }) catch unreachable;
+        defer ctx.game.allocator.free(msg);
+
+        ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, msg) catch log.warn("failed sending message", .{});
     }
 };
 
