@@ -127,6 +127,7 @@ pub const Game = struct {
         try self.command_parser.register("突破", breakOutCommand);
         try self.command_parser.register("直接突破", directBreakOutCommand);
         try self.command_parser.register("送灵石", giveStoneCommand);
+        try self.command_parser.register("偷灵石", stoleStoneCommand);
 
         try self.command_parser.register("修仙签到", checkInCommand);
         try self.command_parser.register("闭关修炼", retreatCommand);
@@ -171,6 +172,7 @@ pub const Game = struct {
         name: ?[]const u8,
         break_out_bonus: f64 = 0,
         last_breakout: i64 = 0,
+        last_stole: i64 = 0,
 
         fn random(random_source: *std.Random.IoSource, registry: *SoulCampfire.registry.Registry, user_id: usize) @This() {
             const random_interface = random_source.interface();
@@ -1220,6 +1222,83 @@ pub const Game = struct {
         defer ctx.game.allocator.free(msg);
 
         ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, msg) catch log.warn("failed sending message", .{});
+    }
+
+    fn stoleStoneCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments: []const []const u8) void {
+        const player_entity = getPlayer(ctx.game.allocator, ctx.game.world.?, ctx.event.value.sender.user_id);
+        if (player_entity == 0) {
+            _ = ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "你还未踏上仙途！") catch log.warn("failed sending message", .{});
+            return;
+        }
+
+        const player = ecs.get_mut(ctx.game.world.?, player_entity, Player).?;
+
+        if (arguments.len < 1 or ctx.event.value.message.len < 2) {
+            ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "叽里咕噜说什么呢") catch log.warn("failed sending message", .{});
+            return;
+        }
+
+        if (ctx.event.value.message[1] != .at) {
+            ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "不是有效的的at") catch log.warn("failed sending message", .{});
+            return;
+        }
+
+        if (player.stone < 1000000) {
+            ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "道友的偷窃准备不足，需要至少1000000灵石才能进行切格瓦拉") catch log.warn("failed sending message", .{});
+            return;
+        }
+
+        const now = Io.Clock.real.now(ctx.game.io).toSeconds();
+        if (now - player.last_stole < 600) {
+            const msg = std.fmt.allocPrint(ctx.game.allocator, "偷灵石还在冷却中，剩余{}s", .{now - player.last_stole}) catch unreachable;
+            defer ctx.game.allocator.free(msg);
+
+            ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, msg) catch log.warn("failed sending message", .{});
+            return;
+        }
+
+        const target_user_id = std.fmt.parseInt(usize, ctx.event.value.message[1].at.data.object.get("qq").?.string, 10) catch unreachable;
+        if (player.id == target_user_id) {
+            ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "道友请不要偷自己刷成就") catch log.warn("failed sending message", .{});
+            return;
+        }
+
+        const target_entity = getPlayer(ctx.game.allocator, ctx.game.world.?, target_user_id);
+        if (target_entity == 0) {
+            ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "你at的群友还没有加入仙界， 快去邀请吧") catch log.warn("failed sending message", .{});
+            return;
+        }
+
+        const target_player = ecs.get_mut(ctx.game.world.?, target_entity, Player).?;
+
+        const strength_ratio: f64 = @as(f64, @floatFromInt(player.cultivation.inner)) / @as(f64, @floatFromInt(player.cultivation.inner + target_player.cultivation.inner));
+        if (strength_ratio >= 0.8) {
+            ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "道友偷窃小辈，实属天道所不齿") catch log.warn("failed sending message", .{});
+            return;
+        } else if (strength_ratio <= 0.05) {
+            ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "道友请不要不自量力") catch log.warn("failed sending message", .{});
+            return;
+        }
+
+        player.last_stole = now;
+
+        const verdiction = ctx.game.random_source.interface().float(f64);
+        if (verdiction < strength_ratio) {
+            const stone_stolen: usize = @divFloor(ctx.game.random_source.interface().intRangeLessThan(usize, 1, 20) * target_player.stone, 100);
+            player.stone += stone_stolen;
+            target_player.stone -= stone_stolen;
+            const user_id_str = std.fmt.allocPrint(ctx.game.allocator, "{}", .{target_player.id}) catch unreachable;
+            defer ctx.game.allocator.free(user_id_str);
+            const msg = std.fmt.allocPrint(ctx.game.allocator, "成功偷取了 {s} 道友的 {} 灵石", .{ target_player.name orelse user_id_str, stone_stolen }) catch unreachable;
+            defer ctx.game.allocator.free(msg);
+            ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, msg) catch log.warn("failed sending message", .{});
+            return;
+        } else {
+            player.stone -= 1000000;
+            target_player.stone += 1000000;
+            ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "道友偷窃失手了，被对方发现并被送到了老八厕所义务劳动，赔款灵石*1000000") catch log.warn("failed sending message", .{});
+            return;
+        }
     }
 };
 
