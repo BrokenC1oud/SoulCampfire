@@ -1,4 +1,5 @@
 const std = @import("std");
+const Io = std.Io;
 const log = std.log.scoped(.game);
 
 const ecs = @import("zflecs");
@@ -17,6 +18,7 @@ pub fn init(command: *SoulCampfire.command.Command) !void {
     try command.register("叛出宗门", "退出当前加入的宗门", quitSectCommand);
     try command.register("踢出宗门", "将某人踢出宗门", kickCommand);
     try command.register("宗主传位", "将宗门所有权转移至其他道友", transferCommand);
+    try command.register("宗门排行榜", "根据建设度排名", rankCommand);
 }
 
 fn joinSectCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments: []const []const u8) void {
@@ -376,7 +378,7 @@ fn transferCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments: 
     }
 
     target_player.school.?.role = .owner;
-    player.school.?.role = @enumFromInt(@intFromEnum(.owner) + 1);
+    player.school.?.role = @enumFromInt(@intFromEnum(models.SchoolRelation.Role.owner) + 1);
 
     const sect = SoulCampfire.game.Game.getPlayerSect(ctx.game.allocator, ctx.game.world.?, player.school.?);
 
@@ -387,5 +389,45 @@ fn transferCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments: 
     const msg = std.fmt.allocPrint(ctx.game.allocator, "传老宗主 {s} 法旨，即日起 {s} 继任 {s} 宗主", .{ player.name orelse player_user_id_str, target_player.name orelse target_user_id_str, sect.name }) catch unreachable;
     defer ctx.game.allocator.free(msg);
 
-    ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, msg);
+    ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, msg) catch log.warn("failed sending message", .{});
+}
+
+fn rankCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments: []const []const u8) void {
+    _ = arguments;
+
+    const RankEntry = struct {
+        sect: *const models.School,
+
+        fn lessThan(_: void, lhs: @This(), rhs: @This()) bool {
+            return lhs.sect.scale > rhs.sect.scale;
+        }
+    };
+
+    var entries = std.ArrayList(RankEntry).initCapacity(ctx.game.allocator, 0) catch unreachable;
+    defer entries.deinit(ctx.game.allocator);
+
+    var schools = ecs.each(ctx.game.world.?, models.School);
+    while (ecs.each_next(&schools)) {
+        for (schools.entities()) |entity| {
+            const school = ecs.get(ctx.game.world.?, entity, models.School).?;
+            entries.append(ctx.game.allocator, .{ .sect = school }) catch unreachable;
+        }
+    }
+
+    std.sort.block(RankEntry, entries.items, void{}, RankEntry.lessThan);
+
+    var msg: Io.Writer.Allocating = .init(ctx.game.allocator);
+    defer msg.deinit();
+
+    msg.writer.print("【宗门排行榜】\n", .{}) catch unreachable;
+    const count = @min(entries.items.len, 10);
+    for (entries.items[0..count], 0..) |entry, idx| {
+        msg.writer.print("{}. {s} {}\n", .{ idx + 1, entry.sect.name, entry.sect.scale }) catch unreachable;
+    }
+
+    if (count == 0) {
+        msg.writer.print("暂无宗门上榜", .{}) catch unreachable;
+    }
+
+    ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, msg.written()) catch log.warn("failed sending message", .{});
 }
