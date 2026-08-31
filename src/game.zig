@@ -201,6 +201,31 @@ pub const Game = struct {
         return school;
     }
 
+    pub fn nextSectId(world: *ecs.world_t) usize {
+        var max_id: usize = 0;
+        var schools = ecs.each(world, models.School);
+        while (ecs.each_next(&schools)) {
+            for (schools.entities()) |entity| {
+                const school = ecs.get(world, entity, models.School).?;
+                max_id = @max(max_id, school.id);
+            }
+        }
+        return max_id + 1;
+    }
+
+    pub fn hasSectName(world: *ecs.world_t, name: []const u8) bool {
+        var schools = ecs.each(world, models.School);
+        while (ecs.each_next(&schools)) {
+            for (schools.entities()) |entity| {
+                const school = ecs.get(world, entity, models.School).?;
+                if (std.mem.eql(u8, school.name, name)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     fn loadData(self: *@This()) !void {
         const players = try self.db.session.query(models.Player).findAll();
         for (players) |player| {
