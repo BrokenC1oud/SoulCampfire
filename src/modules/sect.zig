@@ -188,7 +188,10 @@ fn grantPermissionCommand(ctx: SoulCampfire.command.Command.CommandContext, argu
         return;
     }
 
-    const target_user_id = std.fmt.parseInt(usize, ctx.event.value.message[1].at.data.object.get("qq").?.string, 10) catch unreachable;
+    const target_user_id = SoulCampfire.utils.parseAtTarget(&ctx.event, 1) orelse {
+        ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "无效的@目标，请指定具体的群友") catch log.warn("failed sending message", .{});
+        return;
+    };
     const target_entity = SoulCampfire.game.Game.getPlayer(ctx.game.allocator, ctx.game.world.?, target_user_id);
     if (target_entity == 0) {
         ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "对方还未踏入仙途，快去邀请吧") catch log.warn("failed sending message", .{});
@@ -301,7 +304,10 @@ fn kickCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments: []co
         return;
     }
 
-    const target_user_id = std.fmt.parseInt(usize, ctx.event.value.message[1].at.data.object.get("qq").?.string, 10) catch unreachable;
+    const target_user_id = SoulCampfire.utils.parseAtTarget(&ctx.event, 1) orelse {
+        ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "无效的@目标，请指定具体的群友") catch log.warn("failed sending message", .{});
+        return;
+    };
     const target_entity = SoulCampfire.game.Game.getPlayer(ctx.game.allocator, ctx.game.world.?, target_user_id);
     if (target_entity == 0) {
         ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "对方还未踏入仙界，快去邀请吧") catch log.warn("failed sending message", .{});
@@ -361,7 +367,10 @@ fn transferCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments: 
         return;
     }
 
-    const target_user_id = std.fmt.parseInt(usize, ctx.event.value.message[1].at.data.object.get("qq").?.string, 10) catch unreachable;
+    const target_user_id = SoulCampfire.utils.parseAtTarget(&ctx.event, 1) orelse {
+        ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "无效的@目标，请指定具体的群友") catch log.warn("failed sending message", .{});
+        return;
+    };
     if (target_user_id == player.id) {
         ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "你无法传位给自己") catch log.warn("failed sending message", .{});
         return;

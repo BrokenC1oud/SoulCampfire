@@ -521,7 +521,10 @@ fn giveStoneCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments:
         return;
     }
 
-    const target_user_id = std.fmt.parseInt(usize, ctx.event.value.message[1].at.data.object.get("qq").?.string, 10) catch unreachable;
+    const target_user_id = SoulCampfire.utils.parseAtTarget(&ctx.event, 1) orelse {
+        ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "无效的@目标，请指定具体的群友") catch log.warn("failed sending message", .{});
+        return;
+    };
 
     if (player.id == target_user_id) {
         ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "请不要将灵石赠送给自己") catch log.warn("failed sending message", .{});
@@ -563,7 +566,7 @@ fn stoleStoneCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments
     }
 
     if (ctx.event.value.message[1] != .at) {
-        ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "不是有效的的at") catch log.warn("failed sending message", .{});
+        ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "不是有效的at") catch log.warn("failed sending message", .{});
         return;
     }
 
@@ -581,7 +584,10 @@ fn stoleStoneCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments
         return;
     }
 
-    const target_user_id = std.fmt.parseInt(usize, ctx.event.value.message[1].at.data.object.get("qq").?.string, 10) catch unreachable;
+    const target_user_id = SoulCampfire.utils.parseAtTarget(&ctx.event, 1) orelse {
+        ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "无效的@目标，请指定具体的群友") catch log.warn("failed sending message", .{});
+        return;
+    };
     if (player.id == target_user_id) {
         ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "道友请不要偷自己刷成就") catch log.warn("failed sending message", .{});
         return;
