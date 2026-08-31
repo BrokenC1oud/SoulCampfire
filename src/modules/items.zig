@@ -6,6 +6,8 @@ const SoulCampfire = @import("SoulCampfire");
 const models = SoulCampfire.models;
 
 pub fn init(command: *SoulCampfire.command.Command) !void {
+    log.debug("loading items module", .{});
+
     try command.register("服用", "服用背包内的物品，获得加成", tookDrugCommand);
     try command.register("我的背包", "查看背包内物品", myBackpackCommand);
 }

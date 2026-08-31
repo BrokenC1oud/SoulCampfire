@@ -7,7 +7,7 @@ const CommandError = error{ InvalidName, EmptyName, UnknownCommand };
 
 pub const Command = struct {
     allocator: Allocator,
-    commands: std.StringHashMap(CommandEntry),
+    commands: std.array_hash_map.String(CommandEntry),
 
     const CommandEntry = struct {
         callback: Callback,
@@ -24,16 +24,15 @@ pub const Command = struct {
     pub fn init(allocator: Allocator) @This() {
         return .{
             .allocator = allocator,
-            .commands = .init(allocator),
+            .commands = std.array_hash_map.String(CommandEntry).init(allocator, &.{}, &.{}) catch unreachable,
         };
     }
 
     pub fn deinit(self: *@This()) void {
-        var iterator = self.commands.keyIterator();
-        while (iterator.next()) |key| {
-            self.allocator.free(key.*);
+        for (self.commands.keys()) |key| {
+            self.allocator.free(key);
         }
-        self.commands.deinit();
+        self.commands.deinit(self.allocator);
         self.* = undefined;
     }
 
@@ -44,7 +43,7 @@ pub const Command = struct {
         const owned_name = try self.allocator.dupe(u8, name);
         errdefer self.allocator.free(owned_name);
 
-        try self.commands.put(owned_name, .{ .callback = callback, .description = description });
+        try self.commands.put(self.allocator, owned_name, .{ .callback = callback, .description = description });
     }
 
     pub fn execute(self: *@This(), input: []const u8, event: SoulCampfire.GroupMessageEvent, game: *SoulCampfire.game.Game) !void {
