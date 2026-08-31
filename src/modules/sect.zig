@@ -70,7 +70,7 @@ fn createSectCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments
 
     const player = ecs.get_mut(ctx.game.world.?, player_entity, models.Player).?;
 
-    if (ctx.game.registry.levels.?.get(player.cultivation.level_id).?.level < 1) {
+    if (ctx.game.registry.levels.?.get(player.cultivation.level_id).?.level < 5) {
         ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "你的等级还没有达到列阵境，无法创建宗门") catch log.warn("failed sending message", .{});
         return;
     }

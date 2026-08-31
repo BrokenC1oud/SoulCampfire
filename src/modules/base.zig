@@ -226,7 +226,7 @@ fn retreatCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments: [
                 \\
                 \\当前境界：{s}
                 \\当前修为：{}
-                \\关: 提前结束，但收益会大打折扣 
+                \\
                 \\你感到一阵疲惫，需要打坐休息{}分钟才能再次闭关。
             , .{
                 -result.inner(),
@@ -574,7 +574,7 @@ fn stoleStoneCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments
 
     const now = Io.Clock.real.now(ctx.game.io).toSeconds();
     if (now - player.last_stole < 600) {
-        const msg = std.fmt.allocPrint(ctx.game.allocator, "偷灵石还在冷却中，剩余{}s", .{now - player.last_stole}) catch unreachable;
+        const msg = std.fmt.allocPrint(ctx.game.allocator, "偷灵石还在冷却中，剩余{}s", .{600 - (now - player.last_stole)}) catch unreachable;
         defer ctx.game.allocator.free(msg);
 
         ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, msg) catch log.warn("failed sending message", .{});
