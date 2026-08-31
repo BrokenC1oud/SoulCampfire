@@ -191,12 +191,12 @@ pub const Game = struct {
         return player;
     }
 
-    pub fn getPlayerSect(allocator: Allocator, world: *ecs.world_t, school_rel: models.SchoolRelation) *const models.School {
+    pub fn getPlayerSect(allocator: Allocator, world: *ecs.world_t, school_rel: models.SchoolRelation) *models.School {
         const school_name = std.fmt.allocPrintSentinel(allocator, "School_{}", .{school_rel.id}, 0) catch unreachable;
         defer allocator.free(school_name);
 
         const school_entity = ecs.lookup(world, school_name);
-        const school = ecs.get(world, school_entity, models.School).?;
+        const school = ecs.get_mut(world, school_entity, models.School).?;
 
         return school;
     }

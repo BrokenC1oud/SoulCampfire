@@ -76,17 +76,20 @@ pub const Trait = enum {
 
 pub const SchoolRelation = struct {
     id: usize,
-    role: enum {
+    role: Role,
+    contribution: usize,
+
+    pub const Role = enum(u8) {
         /// 宗主
-        owner,
+        owner = 0,
         /// 长老
-        elder,
+        elder = 1,
         /// 亲传
-        disciple,
+        disciple = 2,
         /// 内门
-        inner,
+        inner = 3,
         /// 外门
-        outer,
+        outer = 4,
 
         pub fn toDisplay(self: @This()) []const u8 {
             return switch (self) {
@@ -97,8 +100,22 @@ pub const SchoolRelation = struct {
                 .outer => "外门",
             };
         }
-    },
-    contribution: usize,
+
+        pub fn fromStr(str: []const u8) ?@This() {
+            return if (std.mem.eql(u8, str, "宗主"))
+                .owner
+            else if (std.mem.eql(u8, str, "长老"))
+                .elder
+            else if (std.mem.eql(u8, str, "亲传"))
+                .disciple
+            else if (std.mem.eql(u8, str, "内门"))
+                .inner
+            else if (std.mem.eql(u8, str, "外门"))
+                .outer
+            else
+                null;
+        }
+    };
 };
 
 pub const CheckIn = struct {
@@ -121,8 +138,8 @@ pub const Retreat = struct {
 pub const School = struct {
     id: usize,
     name: []const u8,
-    scale: usize,
-    stone: usize,
+    scale: usize = 0,
+    stone: usize = 0,
 };
 
 pub const InventoryItem = struct {
