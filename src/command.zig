@@ -11,6 +11,7 @@ pub const Command = struct {
 
     const CommandEntry = struct {
         callback: Callback,
+        description: []const u8,
     };
 
     const Callback = *const fn (CommandContext, []const []const u8) void;
@@ -36,14 +37,14 @@ pub const Command = struct {
         self.* = undefined;
     }
 
-    pub fn register(self: *@This(), name: []const u8, callback: Callback) !void {
+    pub fn register(self: *@This(), name: []const u8, description: []const u8, callback: Callback) !void {
         if (std.mem.indexOf(u8, name, " ") != null) {
             return CommandError.InvalidName;
         }
         const owned_name = try self.allocator.dupe(u8, name);
         errdefer self.allocator.free(owned_name);
 
-        try self.commands.put(owned_name, .{ .callback = callback });
+        try self.commands.put(owned_name, .{ .callback = callback, .description = description });
     }
 
     pub fn execute(self: *@This(), input: []const u8, event: SoulCampfire.GroupMessageEvent, game: *SoulCampfire.game.Game) !void {
