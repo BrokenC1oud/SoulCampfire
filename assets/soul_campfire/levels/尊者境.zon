@@ -1,7 +1,0 @@
-.{
-    .level = 6,
-    .extensible = true,
-    .requirement = 896000,
-    .ratio = 6.2,
-    .breakout_rate = 25,
-}
