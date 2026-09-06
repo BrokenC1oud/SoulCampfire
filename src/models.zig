@@ -14,12 +14,12 @@ pub const Player = struct {
     last_breakout: i64 = 0,
     last_stole: i64 = 0,
 
-    pub fn random(random_source: *std.Random.IoSource, registry: *SoulCampfire.registry.Registry, user_id: usize) @This() {
+    pub fn random(random_source: *std.Random.IoSource, user_id: usize) @This() {
         const random_interface = random_source.interface();
 
         return .{
             .id = user_id,
-            .cultivation = .{ .level_id = registry.getLevelByLevel(0).?.key_ptr.*, .minor = 0, .inner = 100 },
+            .cultivation = .{ .level_id = SoulCampfire.registry.Registries.getLevelByLevel(0).?.key_ptr.*, .minor = 0, .inner = 100 },
             .trait = random_interface.enumValue(Trait),
             .school = null,
             .name = null,
@@ -28,7 +28,7 @@ pub const Player = struct {
 };
 
 pub const Cultivation = struct {
-    level_id: []const u8,
+    level_id: SoulCampfire.registry.Identifier,
     minor: u2,
     inner: usize,
 
@@ -40,8 +40,8 @@ pub const Cultivation = struct {
         }
     }
 
-    pub fn toDisplay(self: *@This(), allocator: Allocator, registry: *SoulCampfire.registry.Registry) []const u8 {
-        const major = registry.levels.?.get(self.level_id).?;
+    pub fn toDisplay(self: *@This(), allocator: Allocator) []const u8 {
+        const major = SoulCampfire.registry.Registries.LEVELS.?.entries.get(self.level_id).?;
         const minor = switch (self.minor) {
             0 => "初期",
             1 => "中期",
@@ -145,6 +145,6 @@ pub const School = struct {
 pub const InventoryItem = struct {
     id: usize,
     user_id: usize,
-    item_id: []const u8,
+    item_id: SoulCampfire.registry.Identifier,
     count: usize,
 };

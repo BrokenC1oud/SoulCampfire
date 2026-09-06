@@ -33,8 +33,6 @@ pub const Game = struct {
 
     db: SoulCampfire.db.Db,
 
-    registry: SoulCampfire.registry.Registry,
-
     pub fn init(self: *@This(), allocator: Allocator, io: Io, env: *Zenver) !void {
         self.* = undefined;
         self.allocator = allocator;
@@ -73,7 +71,7 @@ pub const Game = struct {
         self.db = try .init(self.allocator, self.io, "soul_campfire.db");
         errdefer self.db.deinit();
 
-        self.registry = .init(self.allocator, self.io);
+        try SoulCampfire.registry.Registries.init(self.allocator);
     }
 
     pub fn deinit(self: *@This()) void {
@@ -91,15 +89,13 @@ pub const Game = struct {
         self.allocator.free(self.event_queue_buffer);
 
         self.db.deinit();
-        self.registry.deinit();
 
+        SoulCampfire.registry.Registries.deinit();
         self.* = undefined;
     }
 
     pub fn start(self: *@This()) !void {
         try self.db.registerModel(&.{ models.Player, models.CheckIn, models.Retreat, models.School, models.InventoryItem });
-
-        try self.registry.load();
 
         try self.server.start();
 
@@ -111,19 +107,18 @@ pub const Game = struct {
 
         ecs.COMPONENT(self.world.?, models.Player);
         ecs.COMPONENT(self.world.?, models.Retreat);
-
         ecs.COMPONENT(self.world.?, models.School);
 
         try self.loadData();
 
         _ = ecs.ADD_SYSTEM(self.world.?, "event handler system", ecs.OnUpdate, messageEventSystem);
         _ = ecs.ADD_SYSTEM(self.world.?, "retreat in depth system", ecs.OnUpdate, depthRetreatSystem);
-
         _ = ecs.ADD_SYSTEM(self.world.?, "save system", ecs.OnStore, saveSystem);
 
         try SoulCampfire.modules.base.init(&self.command_parser);
         try SoulCampfire.modules.sect.init(&self.command_parser);
         try SoulCampfire.modules.items.init(&self.command_parser);
+        try SoulCampfire.modules.content.init(&self.command_parser);
 
         try self.command_parser.register("避世", "", quitWorldCommand);
         try self.command_parser.register("入世", "", joinWorldCommand);

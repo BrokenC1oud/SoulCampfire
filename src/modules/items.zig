@@ -21,8 +21,8 @@ fn myBackpackCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments
         return;
     }
 
-    const items = ctx.game.db.session.query(models.InventoryItem).where("user_id", ctx.event.value.sender.user_id).findAll() catch {
-        log.warn("db error", .{});
+    const items = ctx.game.db.session.query(models.InventoryItem).where("user_id", ctx.event.value.sender.user_id).findAll() catch |err| {
+        log.warn("db error: {}", .{err});
         return;
     };
 
@@ -32,7 +32,7 @@ fn myBackpackCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments
     if (items.len > 0) {
         msg.writer.print("你的背包：\n", .{}) catch unreachable;
         for (items) |inv_item| {
-            const item = ctx.game.registry.items.?.get(inv_item.item_id).?;
+            const item = SoulCampfire.registry.Registries.ITEMS.?.entries.get(inv_item.item_id).?;
             msg.writer.print("{s} * {}\n", .{ item.name, inv_item.count }) catch unreachable;
         }
     } else {

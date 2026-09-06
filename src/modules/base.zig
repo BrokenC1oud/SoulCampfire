@@ -42,7 +42,7 @@ fn inspectSoulCommand(ctx: SoulCampfire.command.Command.CommandContext, argument
     }
 
     const player = ecs.new_entity(ctx.game.world.?, new_player_name);
-    const new_info = models.Player.random(&ctx.game.random_source, &ctx.game.registry, ctx.event.value.sender.user_id);
+    const new_info = models.Player.random(&ctx.game.random_source, ctx.event.value.sender.user_id);
     _ = ecs.set(ctx.game.world.?, player, models.Player, new_info);
 
     const reply_message = std.fmt.allocPrint(ctx.game.allocator, "[CQ:reply,id={}]欢迎踏入仙途，你的灵根是：{s}, 你将从炼气一层开始", .{ ctx.event.value.message_id, new_info.trait.toDisplay() }) catch unreachable;
@@ -186,7 +186,7 @@ fn retreatCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments: [
 
         const info = ecs.get_mut(ctx.game.world.?, player, models.Player).?;
         info.cultivation.modify(result.inner());
-        const cultivation_level = info.cultivation.toDisplay(ctx.game.allocator, &ctx.game.registry);
+        const cultivation_level = info.cultivation.toDisplay(ctx.game.allocator);
         defer ctx.game.allocator.free(cultivation_level);
 
         const reply_message = switch (result) {
@@ -384,15 +384,15 @@ fn breakOutCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments: 
     }
 
     const player = ecs.get(ctx.game.world.?, player_entity, models.Player).?;
-    const level = ctx.game.registry.levels.?.get(player.cultivation.level_id).?;
+    const level = SoulCampfire.registry.Registries.LEVELS.?.entries.get(player.cultivation.level_id).?;
     const next_level = if (level.extensible) switch (player.cultivation.minor) {
         0, 1 => level,
-        2 => if (ctx.game.registry.getLevelByLevel(level.level + 1)) |ne| ne.value_ptr.* else {
+        2 => if (SoulCampfire.registry.Registries.getLevelByLevel(level.level + 1)) |ne| ne.value_ptr.* else {
             ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "你已经到达了最高境界，无法继续突破") catch log.warn("failed sending message", .{});
             return;
         },
         else => @panic("how did you get there"),
-    } else if (ctx.game.registry.getLevelByLevel(level.level + 1)) |ne| ne.value_ptr.* else {
+    } else if (SoulCampfire.registry.Registries.getLevelByLevel(level.level + 1)) |ne| ne.value_ptr.* else {
         ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "你已经到达了最高境界，无法继续突破") catch log.warn("failed sending message", .{});
         return;
     };
@@ -424,15 +424,15 @@ fn directBreakOutCommand(ctx: SoulCampfire.command.Command.CommandContext, argum
     }
 
     const player = ecs.get_mut(ctx.game.world.?, player_entity, models.Player).?;
-    const level = ctx.game.registry.levels.?.get(player.cultivation.level_id).?;
+    const level = SoulCampfire.registry.Registries.LEVELS.?.entries.get(player.cultivation.level_id).?;
     const next_level = if (level.extensible) switch (player.cultivation.minor) {
         0, 1 => level,
-        2 => if (ctx.game.registry.getLevelByLevel(level.level + 1)) |ne| ne.value_ptr.* else {
+        2 => if (SoulCampfire.registry.Registries.getLevelByLevel(level.level + 1)) |ne| ne.value_ptr.* else {
             ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "你已经到达了最高境界，无法继续突破") catch log.warn("failed sending message", .{});
             return;
         },
         else => @panic("how did you get there"),
-    } else if (ctx.game.registry.getLevelByLevel(level.level + 1)) |ne| ne.value_ptr.* else {
+    } else if (SoulCampfire.registry.Registries.getLevelByLevel(level.level + 1)) |ne| ne.value_ptr.* else {
         ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "你已经到达了最高境界，无法继续突破") catch log.warn("failed sending message", .{});
         return;
     };
@@ -460,12 +460,12 @@ fn directBreakOutCommand(ctx: SoulCampfire.command.Command.CommandContext, argum
         if (level.extensible and player.cultivation.minor < 2) {
             player.cultivation.minor += 1;
         } else {
-            player.cultivation.level_id = ctx.game.registry.getLevelByLevel(next_level.level).?.key_ptr.*;
+            player.cultivation.level_id = SoulCampfire.registry.Registries.getLevelByLevel(next_level.level).?.key_ptr.*;
             player.cultivation.minor = 0;
         }
         player.break_out_bonus = 0;
 
-        const cultivation_level = player.cultivation.toDisplay(ctx.game.allocator, &ctx.game.registry);
+        const cultivation_level = player.cultivation.toDisplay(ctx.game.allocator);
         defer ctx.game.allocator.free(cultivation_level);
 
         const message = std.fmt.allocPrint(ctx.game.allocator,
@@ -654,7 +654,7 @@ fn rankCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments: []co
     while (ecs.each_next(&players)) {
         for (players.entities()) |entity| {
             const player = ecs.get(ctx.game.world.?, entity, models.Player).?;
-            const level = ctx.game.registry.levels.?.get(player.cultivation.level_id) orelse continue;
+            const level = SoulCampfire.registry.Registries.LEVELS.?.entries.get(player.cultivation.level_id) orelse continue;
             entries.append(ctx.game.allocator, .{
                 .player = player.*,
                 .level = level.level,
@@ -670,7 +670,7 @@ fn rankCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments: []co
     message.writer.print("【修仙排行榜】\n", .{}) catch unreachable;
     const count = @min(entries.items.len, 10);
     for (entries.items[0..count], 0..) |entry, index| {
-        const level = ctx.game.registry.levels.?.get(entry.player.cultivation.level_id).?;
+        const level = SoulCampfire.registry.Registries.LEVELS.?.entries.get(entry.player.cultivation.level_id).?;
         const user_id = std.fmt.allocPrint(ctx.game.allocator, "{}", .{entry.player.id}) catch unreachable;
         defer ctx.game.allocator.free(user_id);
 
