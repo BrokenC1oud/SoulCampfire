@@ -95,7 +95,7 @@ pub const Game = struct {
     }
 
     pub fn start(self: *@This()) !void {
-        try self.db.registerModel(&.{ models.Player, models.CheckIn, models.Retreat, models.School, models.InventoryItem });
+        try self.db.registerModel(self.allocator, &.{ models.Player, models.CheckIn, models.Retreat, models.School, models.InventoryItem });
 
         try self.server.start();
 

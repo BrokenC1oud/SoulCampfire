@@ -24,39 +24,73 @@ pub const Db = struct {
         self.* = undefined;
     }
 
-    pub fn registerModel(self: *@This(), comptime T: []const type) !void {
-        comptime var full_migration: []const u8 = "";
-        inline for (T) |t| {
-            comptime var migration: []const u8 = "CREATE TABLE " ++ getClassName(t) ++ " (\n";
+    pub fn registerModel(self: *@This(), allocator: Allocator, comptime T: []const type) !void {
+        var arena = std.heap.ArenaAllocator.init(allocator);
+        defer arena.deinit();
 
-            comptime var first = true;
+        var migration: std.ArrayList(u8) = .empty;
+        defer migration.deinit(allocator);
+
+        inline for (T) |t| {
+            try migration.appendSlice(allocator, "CREATE TABLE ");
+            try migration.appendSlice(allocator, getClassName(t));
+            try migration.appendSlice(allocator, " (\n");
+
+            var first = true;
             inline for (@typeInfo(t).@"struct".fields) |field| {
-                if (!first) migration = migration ++ ",\n";
+                if (!first) try migration.appendSlice(allocator, ",\n");
 
                 if (comptime std.mem.eql(u8, field.name, "id")) {
-                    migration = migration ++ "id INTEGER PRIMARY KEY";
+                    try migration.appendSlice(allocator, "id INTEGER PRIMARY KEY");
                     first = false;
                     continue;
                 }
 
-                migration = migration ++ field.name ++ " " ++ comptime columnType(field.type);
+                try migration.appendSlice(allocator, field.name);
+                try migration.append(allocator, ' ');
+                try migration.appendSlice(allocator, comptime columnType(field.type));
 
-                if (!nullable(field.type)) migration = migration ++ " NOT NULL";
+                if (!nullable(field.type)) try migration.appendSlice(allocator, " NOT NULL");
 
                 if (field.default_value_ptr) |default| {
-                    const de: *const usize = @ptrCast(@alignCast(default));
-                    migration = migration ++ " DEFAULT " ++ std.fmt.comptimePrint("{}", .{de.*});
+                    const value: field.type = @as(*const field.type, @ptrCast(@alignCast(default))).*;
+                    try migration.appendSlice(allocator, " DEFAULT ");
+                    try appendDefault(&migration, allocator, arena.allocator(), field.type, value);
                 }
 
                 first = false;
             }
 
-            migration = migration ++ ");";
-
-            full_migration = full_migration ++ migration;
+            try migration.appendSlice(allocator, ");");
         }
 
-        try fridge.migrate(&self.session, self.io, full_migration);
+        try fridge.migrate(&self.session, self.io, migration.items);
+    }
+
+    fn appendDefault(list: *std.ArrayList(u8), allocator: Allocator, arena: Allocator, comptime T: type, value: T) !void {
+        const v = try fridge.Value.from(value, arena);
+        switch (v) {
+            .null => try list.appendSlice(allocator, "NULL"),
+            .int => |i| try list.print(allocator, "{d}", .{i}),
+            .float => |f| try list.print(allocator, "{d}", .{f}),
+            .string => |s| {
+                try list.append(allocator, '\'');
+                try appendEscaped(list, allocator, s);
+                try list.append(allocator, '\'');
+            },
+            .blob => |b| {
+                try list.appendSlice(allocator, "X'");
+                for (b) |byte| try list.print(allocator, "{x:0>2}", .{byte});
+                try list.append(allocator, '\'');
+            },
+        }
+    }
+
+    fn appendEscaped(list: *std.ArrayList(u8), allocator: Allocator, s: []const u8) !void {
+        for (s) |c| {
+            if (c == '\'') try list.append(allocator, '\'');
+            try list.append(allocator, c);
+        }
     }
 
     fn columnType(comptime T: type) []const u8 {

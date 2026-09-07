@@ -19,7 +19,7 @@ pub const Player = struct {
 
         return .{
             .id = user_id,
-            .cultivation = .{ .level_id = SoulCampfire.registry.Registries.getLevelByLevel(0).?.key_ptr.*, .minor = 0, .inner = 100 },
+            .cultivation = .{ .level_id = SoulCampfire.modules.content.@"江湖好手", .minor = 0, .inner = 100 },
             .trait = random_interface.enumValue(Trait),
             .school = null,
             .name = null,
@@ -140,6 +140,8 @@ pub const School = struct {
     name: []const u8,
     scale: usize = 0,
     stone: usize = 0,
+
+    alchemist_atelier: ?SoulCampfire.registry.Identifier = null,
 };
 
 pub const InventoryItem = struct {

@@ -104,13 +104,22 @@ const Level = struct {
     name: []const u8,
 };
 
+const AlchemistAtelierLevel = struct {
+    name: []const u8,
+    level: usize,
+    cost_scale: usize,
+    cost_stone: usize,
+};
+
 pub const Registries = struct {
     pub var ITEMS: ?Registry(Item) = null;
     pub var LEVELS: ?Registry(Level) = null;
+    pub var ALCHEMIST_ATELIER_LEVEL: ?Registry(AlchemistAtelierLevel) = null;
 
     pub fn init(allocator: Allocator) !void {
         ITEMS = Registry(Item).init(allocator);
         LEVELS = Registry(Level).init(allocator);
+        ALCHEMIST_ATELIER_LEVEL = Registry(AlchemistAtelierLevel).init(allocator);
     }
 
     pub fn deinit() void {
@@ -120,10 +129,24 @@ pub const Registries = struct {
         if (LEVELS) |*sth| {
             sth.deinit();
         }
+        if (ALCHEMIST_ATELIER_LEVEL) |*sth| {
+            sth.deinit();
+        }
     }
 
     pub fn getLevelByLevel(level: usize) ?std.HashMap(Identifier, Level, IdentifierCtx, 80).Entry {
         if (LEVELS) |*levels| {
+            var iter = levels.entries.iterator();
+            return while (iter.next()) |entry| {
+                if (entry.value_ptr.level == level) break entry;
+            } else null;
+        } else {
+            return null;
+        }
+    }
+
+    pub fn getAtelierByLevel(level: usize) ?std.HashMap(Identifier, AlchemistAtelierLevel, IdentifierCtx, 80).Entry {
+        if (ALCHEMIST_ATELIER_LEVEL) |*levels| {
             var iter = levels.entries.iterator();
             return while (iter.next()) |entry| {
                 if (entry.value_ptr.level == level) break entry;
