@@ -12,6 +12,12 @@ pub fn init(command: *SoulCampfire.command.Command) !void {
     try command.register("我的背包", "查看背包内物品", myBackpackCommand);
 }
 
+fn tookDrugCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments: []const []const u8) void {
+    // TODO
+    _ = ctx;
+    _ = arguments;
+}
+
 fn myBackpackCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments: []const []const u8) void {
     _ = arguments;
 
@@ -32,7 +38,7 @@ fn myBackpackCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments
     if (items.len > 0) {
         msg.writer.print("你的背包：\n", .{}) catch unreachable;
         for (items) |inv_item| {
-            const item = SoulCampfire.registry.Registries.ITEMS.?.entries.get(inv_item.item_id).?;
+            const item = SoulCampfire.registry.Registries.ITEMS.?.get(inv_item.item_id).?;
             msg.writer.print("{s} * {}\n", .{ item.name, inv_item.count }) catch unreachable;
         }
     } else {
@@ -40,10 +46,4 @@ fn myBackpackCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments
     }
 
     ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, msg.written()) catch log.warn("failed sending message", .{});
-}
-
-fn tookDrugCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments: []const []const u8) void {
-    // TODO
-    _ = ctx;
-    _ = arguments;
 }

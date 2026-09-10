@@ -384,7 +384,7 @@ fn breakOutCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments: 
     }
 
     const player = ecs.get(ctx.game.world.?, player_entity, models.Player).?;
-    const level = SoulCampfire.registry.Registries.LEVELS.?.entries.get(player.cultivation.level_id).?;
+    const level = SoulCampfire.registry.Registries.LEVELS.?.get(player.cultivation.level_id).?;
     const next_level = if (level.extensible) switch (player.cultivation.minor) {
         0, 1 => level,
         2 => if (SoulCampfire.registry.Registries.getLevelByLevel(level.level + 1)) |ne| ne.value_ptr.* else {
@@ -424,7 +424,7 @@ fn directBreakOutCommand(ctx: SoulCampfire.command.Command.CommandContext, argum
     }
 
     const player = ecs.get_mut(ctx.game.world.?, player_entity, models.Player).?;
-    const level = SoulCampfire.registry.Registries.LEVELS.?.entries.get(player.cultivation.level_id).?;
+    const level = SoulCampfire.registry.Registries.LEVELS.?.get(player.cultivation.level_id).?;
     const next_level = if (level.extensible) switch (player.cultivation.minor) {
         0, 1 => level,
         2 => if (SoulCampfire.registry.Registries.getLevelByLevel(level.level + 1)) |ne| ne.value_ptr.* else {
@@ -654,7 +654,7 @@ fn rankCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments: []co
     while (ecs.each_next(&players)) {
         for (players.entities()) |entity| {
             const player = ecs.get(ctx.game.world.?, entity, models.Player).?;
-            const level = SoulCampfire.registry.Registries.LEVELS.?.entries.get(player.cultivation.level_id) orelse continue;
+            const level = SoulCampfire.registry.Registries.LEVELS.?.get(player.cultivation.level_id) orelse continue;
             entries.append(ctx.game.allocator, .{
                 .player = player.*,
                 .level = level.level,
@@ -670,7 +670,7 @@ fn rankCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments: []co
     message.writer.print("【修仙排行榜】\n", .{}) catch unreachable;
     const count = @min(entries.items.len, 10);
     for (entries.items[0..count], 0..) |entry, index| {
-        const level = SoulCampfire.registry.Registries.LEVELS.?.entries.get(entry.player.cultivation.level_id).?;
+        const level = SoulCampfire.registry.Registries.LEVELS.?.get(entry.player.cultivation.level_id).?;
         const user_id = std.fmt.allocPrint(ctx.game.allocator, "{}", .{entry.player.id}) catch unreachable;
         defer ctx.game.allocator.free(user_id);
 

@@ -23,6 +23,54 @@ pub fn init(command: *SoulCampfire.command.Command) !void {
     try command.register("建设宗门丹房", "建设宗门丹房，让每个成员每日可以领取丹药", buildAlchemistAtelierCommand);
 }
 
+fn mySectCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments: []const []const u8) void {
+    _ = arguments;
+
+    const player_entity = SoulCampfire.game.Game.getPlayer(ctx.game.allocator, ctx.game.world.?, ctx.event.value.sender.user_id);
+    if (player_entity == 0) {
+        _ = ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "你还未踏上仙途！") catch log.warn("failed sending message", .{});
+        return;
+    }
+
+    const player = ecs.get(ctx.game.world.?, player_entity, models.Player).?;
+    if (player.school) |school_r| {
+        const school = SoulCampfire.game.Game.getPlayerSect(ctx.game.allocator, ctx.game.world.?, school_r);
+
+        const school_rank = ctx.game.db.session.raw(
+            \\WITH RankedSchool AS (
+            \\    SELECT
+            \\        id,
+            \\        scale,
+            \\        row_number() over (ORDER BY scale DESC) AS rank_num
+            \\    FROM School
+            \\)
+            \\SELECT rank_num
+            \\FROM RankedSchool
+            \\WHERE id = ?
+        , .{school.id}).get(usize) catch {
+            log.warn("db error", .{});
+            return;
+        };
+
+        const msg = std.fmt.allocPrint(ctx.game.allocator,
+            \\你所在的宗门：
+            \\宗门名讳：{s}
+            \\道友职位：{s}
+            \\宗门建设度：{}
+            \\宗门排名：{}
+            \\宗门丹房：{s}
+        , .{
+            school.name, school_r.role.toDisplay(), school.scale, school_rank.?,
+            if (school.alchemist_atelier) |atelier| SoulCampfire.registry.Registries.ALCHEMIST_ATELIER_LEVEL.?.get(atelier).?.name else "宗门还没有建设丹房",
+        }) catch unreachable;
+        defer ctx.game.allocator.free(msg);
+
+        ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, msg) catch log.warn("failed sending message", .{});
+    } else {
+        ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "一介散修，莫要再问") catch log.warn("failed sending message", .{});
+    }
+}
+
 fn joinSectCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments: []const []const u8) void {
     const player_entity = SoulCampfire.game.Game.getPlayer(ctx.game.allocator, ctx.game.world.?, ctx.event.value.sender.user_id);
     if (player_entity == 0) {
@@ -72,7 +120,7 @@ fn createSectCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments
 
     const player = ecs.get_mut(ctx.game.world.?, player_entity, models.Player).?;
 
-    if (SoulCampfire.registry.Registries.LEVELS.?.entries.get(player.cultivation.level_id).?.level < 5) {
+    if (SoulCampfire.registry.Registries.LEVELS.?.get(player.cultivation.level_id).?.level < 5) {
         ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "你的等级还没有达到列阵境，无法创建宗门") catch log.warn("failed sending message", .{});
         return;
     }
@@ -115,54 +163,6 @@ fn createSectCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments
     defer ctx.game.allocator.free(msg);
 
     ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, msg) catch log.warn("failed sending message", .{});
-}
-
-fn mySectCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments: []const []const u8) void {
-    _ = arguments;
-
-    const player_entity = SoulCampfire.game.Game.getPlayer(ctx.game.allocator, ctx.game.world.?, ctx.event.value.sender.user_id);
-    if (player_entity == 0) {
-        _ = ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "你还未踏上仙途！") catch log.warn("failed sending message", .{});
-        return;
-    }
-
-    const player = ecs.get(ctx.game.world.?, player_entity, models.Player).?;
-    if (player.school) |school_r| {
-        const school = SoulCampfire.game.Game.getPlayerSect(ctx.game.allocator, ctx.game.world.?, school_r);
-
-        const school_rank = ctx.game.db.session.raw(
-            \\WITH RankedSchool AS (
-            \\    SELECT
-            \\        id,
-            \\        scale,
-            \\        row_number() over (ORDER BY scale DESC) AS rank_num
-            \\    FROM School
-            \\)
-            \\SELECT rank_num
-            \\FROM RankedSchool
-            \\WHERE id = ?
-        , .{school.id}).get(usize) catch {
-            log.warn("db error", .{});
-            return;
-        };
-
-        const msg = std.fmt.allocPrint(ctx.game.allocator,
-            \\你所在的宗门：
-            \\宗门名讳：{s}
-            \\道友职位：{s}
-            \\宗门建设度：{}
-            \\宗门排名：{}
-            \\宗门丹房：{s}
-        , .{
-            school.name, school_r.role.toDisplay(), school.scale, school_rank.?,
-            if (school.alchemist_atelier) |atelier| SoulCampfire.registry.Registries.ALCHEMIST_ATELIER_LEVEL.?.entries.get(atelier).?.name else "宗门还没有建设丹房",
-        }) catch unreachable;
-        defer ctx.game.allocator.free(msg);
-
-        ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, msg) catch log.warn("failed sending message", .{});
-    } else {
-        ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "一介散修，莫要再问") catch log.warn("failed sending message", .{});
-    }
 }
 
 fn grantPermissionCommand(ctx: SoulCampfire.command.Command.CommandContext, arguments: []const []const u8) void {
@@ -533,13 +533,13 @@ fn buildAlchemistAtelierCommand(ctx: SoulCampfire.command.Command.CommandContext
 
     const sect = SoulCampfire.game.Game.getPlayerSect(ctx.game.allocator, ctx.game.world.?, player.school.?);
 
-    if (sect.alchemist_atelier != null and SoulCampfire.registry.Registries.getAtelierByLevel(SoulCampfire.registry.Registries.ALCHEMIST_ATELIER_LEVEL.?.entries.get(sect.alchemist_atelier.?).?.level + 1) == null) {
+    if (sect.alchemist_atelier != null and SoulCampfire.registry.Registries.getAtelierByLevel(SoulCampfire.registry.Registries.ALCHEMIST_ATELIER_LEVEL.?.get(sect.alchemist_atelier.?).?.level + 1) == null) {
         ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, "宗门丹房等级已经达到最高等级了，无法继续建设了") catch log.warn("failed sending message", .{});
         return;
     }
 
-    const next_level_id = if (sect.alchemist_atelier) |atelier| SoulCampfire.registry.Registries.getAtelierByLevel(SoulCampfire.registry.Registries.ALCHEMIST_ATELIER_LEVEL.?.entries.get(atelier).?.level + 1).?.key_ptr.* else SoulCampfire.modules.content.@"黄级";
-    const next_level = SoulCampfire.registry.Registries.ALCHEMIST_ATELIER_LEVEL.?.entries.get(next_level_id).?;
+    const next_level_id = if (sect.alchemist_atelier) |atelier| SoulCampfire.registry.Registries.getAtelierByLevel(SoulCampfire.registry.Registries.ALCHEMIST_ATELIER_LEVEL.?.get(atelier).?.level + 1).?.key_ptr.* else SoulCampfire.modules.content.@"黄级";
+    const next_level = SoulCampfire.registry.Registries.ALCHEMIST_ATELIER_LEVEL.?.get(next_level_id).?;
 
     if (sect.scale < next_level.cost_scale) {
         const msg = std.fmt.allocPrint(ctx.game.allocator, "宗门建设度不满足要求，需要{}才能建设下一等级丹房", .{next_level.cost_scale}) catch unreachable;

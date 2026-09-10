@@ -41,7 +41,7 @@ pub const Cultivation = struct {
     }
 
     pub fn toDisplay(self: *@This(), allocator: Allocator) []const u8 {
-        const major = SoulCampfire.registry.Registries.LEVELS.?.entries.get(self.level_id).?;
+        const major = SoulCampfire.registry.Registries.LEVELS.?.get(self.level_id).?;
         const minor = switch (self.minor) {
             0 => "初期",
             1 => "中期",

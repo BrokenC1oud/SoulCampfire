@@ -71,21 +71,40 @@ const IdentifierCtx = struct {
 };
 
 fn Registry(T: type) type {
+    const hasName = comptime blk: {
+        if (!@hasField(T, "name")) break :blk false;
+        const FieldType = @TypeOf(@field(@as(T, undefined), "name"));
+        break :blk (FieldType == []const u8 or FieldType == [:0]const u8);
+    };
+
     return struct {
-        entries: std.HashMap(Identifier, T, IdentifierCtx, 80),
+        entries: std.HashMap(Identifier, *const T, IdentifierCtx, 80),
+        nameMap: if (hasName) std.StringHashMap(Identifier) else void,
 
         fn init(allocator: Allocator) @This() {
+            const nm = if (hasName) std.StringHashMap(Identifier).init(allocator) else {};
             return .{
                 .entries = .init(allocator),
+                .nameMap = nm,
             };
         }
 
-        fn register(self: *@This(), id: Identifier, entry: T) !void {
+        pub fn register(self: *@This(), id: Identifier, entry: *const T) !void {
             try self.entries.put(id, entry);
+            if (hasName) {
+                try self.nameMap.put(entry.name, id);
+            }
+        }
+
+        pub fn get(self: *@This(), id: Identifier) ?*const T {
+            return self.entries.get(id);
         }
 
         fn deinit(self: *@This()) void {
             self.entries.deinit();
+            if (hasName) {
+                self.nameMap.deinit();
+            }
         }
     };
 }
@@ -111,15 +130,27 @@ const AlchemistAtelierLevel = struct {
     cost_stone: usize,
 };
 
+const Ingredient = struct {
+    item: Identifier,
+    count: usize,
+};
+
+const Recipe = struct {
+    product: Identifier,
+    ingredients: []const Ingredient,
+};
+
 pub const Registries = struct {
     pub var ITEMS: ?Registry(Item) = null;
     pub var LEVELS: ?Registry(Level) = null;
     pub var ALCHEMIST_ATELIER_LEVEL: ?Registry(AlchemistAtelierLevel) = null;
+    pub var RECIPE: ?Registry(Recipe) = null;
 
     pub fn init(allocator: Allocator) !void {
         ITEMS = Registry(Item).init(allocator);
         LEVELS = Registry(Level).init(allocator);
         ALCHEMIST_ATELIER_LEVEL = Registry(AlchemistAtelierLevel).init(allocator);
+        RECIPE = Registry(Recipe).init(allocator);
     }
 
     pub fn deinit() void {
@@ -132,24 +163,27 @@ pub const Registries = struct {
         if (ALCHEMIST_ATELIER_LEVEL) |*sth| {
             sth.deinit();
         }
+        if (RECIPE) |*sth| {
+            sth.deinit();
+        }
     }
 
-    pub fn getLevelByLevel(level: usize) ?std.HashMap(Identifier, Level, IdentifierCtx, 80).Entry {
+    pub fn getLevelByLevel(level: usize) ?std.HashMap(Identifier, *const Level, IdentifierCtx, 80).Entry {
         if (LEVELS) |*levels| {
             var iter = levels.entries.iterator();
             return while (iter.next()) |entry| {
-                if (entry.value_ptr.level == level) break entry;
+                if (entry.value_ptr.*.level == level) break entry;
             } else null;
         } else {
             return null;
         }
     }
 
-    pub fn getAtelierByLevel(level: usize) ?std.HashMap(Identifier, AlchemistAtelierLevel, IdentifierCtx, 80).Entry {
+    pub fn getAtelierByLevel(level: usize) ?std.HashMap(Identifier, *const AlchemistAtelierLevel, IdentifierCtx, 80).Entry {
         if (ALCHEMIST_ATELIER_LEVEL) |*levels| {
             var iter = levels.entries.iterator();
             return while (iter.next()) |entry| {
-                if (entry.value_ptr.level == level) break entry;
+                if (entry.value_ptr.*.level == level) break entry;
             } else null;
         } else {
             return null;

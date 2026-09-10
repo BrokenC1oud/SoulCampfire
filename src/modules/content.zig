@@ -38,7 +38,7 @@ pub fn init(_: *SoulCampfire.command.Command) !void {
 
     const registries = SoulCampfire.registry.Registries;
 
-    try registries.LEVELS.?.entries.put(@"江湖好手", .{
+    try registries.LEVELS.?.register(@"江湖好手", &.{
         .level = 0,
         .extensible = false,
         .requirement = 0,
@@ -46,7 +46,7 @@ pub fn init(_: *SoulCampfire.command.Command) !void {
         .breakout_rate = 100,
         .name = "江湖好手",
     });
-    try registries.LEVELS.?.entries.put(@"搬血境", .{
+    try registries.LEVELS.?.register(@"搬血境", &.{
         .level = 1,
         .extensible = true,
         .requirement = 2000,
@@ -54,7 +54,7 @@ pub fn init(_: *SoulCampfire.command.Command) !void {
         .breakout_rate = 40,
         .name = "搬血境",
     });
-    try registries.LEVELS.?.entries.put(@"洞天境", .{
+    try registries.LEVELS.?.register(@"洞天境", &.{
         .level = 2,
         .extensible = true,
         .requirement = 8000,
@@ -62,7 +62,7 @@ pub fn init(_: *SoulCampfire.command.Command) !void {
         .breakout_rate = 36,
         .name = "洞天境",
     });
-    try registries.LEVELS.?.entries.put(@"化灵境", .{
+    try registries.LEVELS.?.register(@"化灵境", &.{
         .level = 3,
         .extensible = true,
         .requirement = 60000,
@@ -70,7 +70,7 @@ pub fn init(_: *SoulCampfire.command.Command) !void {
         .breakout_rate = 32,
         .name = "化灵境",
     });
-    try registries.LEVELS.?.entries.put(@"铭纹境", .{
+    try registries.LEVELS.?.register(@"铭纹境", &.{
         .level = 4,
         .extensible = true,
         .requirement = 160000,
@@ -78,7 +78,7 @@ pub fn init(_: *SoulCampfire.command.Command) !void {
         .breakout_rate = 30,
         .name = "铭纹境",
     });
-    try registries.LEVELS.?.entries.put(@"列阵境", .{
+    try registries.LEVELS.?.register(@"列阵境", &.{
         .level = 5,
         .extensible = true,
         .requirement = 384000,
@@ -86,7 +86,7 @@ pub fn init(_: *SoulCampfire.command.Command) !void {
         .breakout_rate = 26,
         .name = "列阵境",
     });
-    try registries.LEVELS.?.entries.put(@"尊者境", .{
+    try registries.LEVELS.?.register(@"尊者境", &.{
         .level = 6,
         .extensible = true,
         .requirement = 896000,
@@ -94,7 +94,7 @@ pub fn init(_: *SoulCampfire.command.Command) !void {
         .breakout_rate = 25,
         .name = "尊者境",
     });
-    try registries.LEVELS.?.entries.put(@"神火境", .{
+    try registries.LEVELS.?.register(@"神火境", &.{
         .level = 7,
         .extensible = true,
         .requirement = 2048000,
@@ -102,7 +102,7 @@ pub fn init(_: *SoulCampfire.command.Command) !void {
         .breakout_rate = 20,
         .name = "神火境",
     });
-    try registries.LEVELS.?.entries.put(@"真一境", .{
+    try registries.LEVELS.?.register(@"真一境", &.{
         .level = 8,
         .extensible = true,
         .requirement = 4608000,
@@ -110,7 +110,7 @@ pub fn init(_: *SoulCampfire.command.Command) !void {
         .breakout_rate = 18,
         .name = "真一境",
     });
-    try registries.LEVELS.?.entries.put(@"圣祭境", .{
+    try registries.LEVELS.?.register(@"圣祭境", &.{
         .level = 9,
         .extensible = true,
         .requirement = 12348000,
@@ -118,7 +118,7 @@ pub fn init(_: *SoulCampfire.command.Command) !void {
         .breakout_rate = 15,
         .name = "圣祭境",
     });
-    try registries.LEVELS.?.entries.put(@"天神境", .{
+    try registries.LEVELS.?.register(@"天神境", &.{
         .level = 10,
         .extensible = true,
         .requirement = 35968000,
@@ -126,7 +126,7 @@ pub fn init(_: *SoulCampfire.command.Command) !void {
         .breakout_rate = 12,
         .name = "天神境",
     });
-    try registries.LEVELS.?.entries.put(@"虚道境", .{
+    try registries.LEVELS.?.register(@"虚道境", &.{
         .level = 11,
         .extensible = true,
         .requirement = 70968000,
@@ -134,7 +134,7 @@ pub fn init(_: *SoulCampfire.command.Command) !void {
         .breakout_rate = 10,
         .name = "虚道境",
     });
-    try registries.LEVELS.?.entries.put(@"斩我境", .{
+    try registries.LEVELS.?.register(@"斩我境", &.{
         .level = 12,
         .extensible = true,
         .requirement = 140968000,
@@ -142,7 +142,7 @@ pub fn init(_: *SoulCampfire.command.Command) !void {
         .breakout_rate = 5,
         .name = "斩我境",
     });
-    try registries.LEVELS.?.entries.put(@"遁一境", .{
+    try registries.LEVELS.?.register(@"遁一境", &.{
         .level = 13,
         .extensible = true,
         .requirement = 450710400,
@@ -150,7 +150,7 @@ pub fn init(_: *SoulCampfire.command.Command) !void {
         .breakout_rate = 3,
         .name = "遁一境",
     });
-    try registries.LEVELS.?.entries.put(@"至尊境", .{
+    try registries.LEVELS.?.register(@"至尊境", &.{
         .level = 14,
         .extensible = true,
         .requirement = 1622557440,
@@ -158,7 +158,7 @@ pub fn init(_: *SoulCampfire.command.Command) !void {
         .breakout_rate = 1,
         .name = "至尊境",
     });
-    try registries.LEVELS.?.entries.put(@"真仙境", .{
+    try registries.LEVELS.?.register(@"真仙境", &.{
         .level = 15,
         .extensible = true,
         .requirement = 5841206784,
@@ -166,7 +166,7 @@ pub fn init(_: *SoulCampfire.command.Command) !void {
         .breakout_rate = 0,
         .name = "真仙境",
     });
-    try registries.LEVELS.?.entries.put(@"仙王境", .{
+    try registries.LEVELS.?.register(@"仙王境", &.{
         .level = 16,
         .extensible = true,
         .requirement = 21028344422,
@@ -174,7 +174,7 @@ pub fn init(_: *SoulCampfire.command.Command) !void {
         .breakout_rate = 0,
         .name = "仙王境",
     });
-    try registries.LEVELS.?.entries.put(@"准帝境", .{
+    try registries.LEVELS.?.register(@"准帝境", &.{
         .level = 17,
         .extensible = true,
         .requirement = 75702039920,
@@ -182,7 +182,7 @@ pub fn init(_: *SoulCampfire.command.Command) !void {
         .breakout_rate = 0,
         .name = "准帝境",
     });
-    try registries.LEVELS.?.entries.put(@"仙帝境", .{
+    try registries.LEVELS.?.register(@"仙帝境", &.{
         .level = 18,
         .extensible = true,
         .requirement = 272527343704,
@@ -190,7 +190,7 @@ pub fn init(_: *SoulCampfire.command.Command) !void {
         .breakout_rate = 0,
         .name = "仙帝境",
     });
-    try registries.LEVELS.?.entries.put(@"祭道之上", .{
+    try registries.LEVELS.?.register(@"祭道之上", &.{
         .level = 19,
         .extensible = false,
         .requirement = 999999999999,
@@ -199,11 +199,11 @@ pub fn init(_: *SoulCampfire.command.Command) !void {
         .name = "祭道之上",
     });
 
-    try registries.ITEMS.?.entries.put(@"恒心草", .{ .name = "恒心草" });
+    try registries.ITEMS.?.register(@"恒心草", &.{ .name = "恒心草" });
 
-    try registries.ALCHEMIST_ATELIER_LEVEL.?.entries.put(@"黄级", .{ .name = "黄级", .level = 1, .cost_scale = 50000000, .cost_stone = 200000 });
-    try registries.ALCHEMIST_ATELIER_LEVEL.?.entries.put(@"玄级", .{ .name = "玄级", .level = 2, .cost_scale = 60000000, .cost_stone = 400000 });
-    try registries.ALCHEMIST_ATELIER_LEVEL.?.entries.put(@"地级", .{ .name = "地级", .level = 3, .cost_scale = 70000000, .cost_stone = 800000 });
-    try registries.ALCHEMIST_ATELIER_LEVEL.?.entries.put(@"天级", .{ .name = "天级", .level = 4, .cost_scale = 80000000, .cost_stone = 1600000 });
-    try registries.ALCHEMIST_ATELIER_LEVEL.?.entries.put(@"仙级", .{ .name = "仙级", .level = 5, .cost_scale = 100000000, .cost_stone = 3200000 });
+    try registries.ALCHEMIST_ATELIER_LEVEL.?.register(@"黄级", &.{ .name = "黄级", .level = 1, .cost_scale = 50000000, .cost_stone = 200000 });
+    try registries.ALCHEMIST_ATELIER_LEVEL.?.register(@"玄级", &.{ .name = "玄级", .level = 2, .cost_scale = 60000000, .cost_stone = 400000 });
+    try registries.ALCHEMIST_ATELIER_LEVEL.?.register(@"地级", &.{ .name = "地级", .level = 3, .cost_scale = 70000000, .cost_stone = 800000 });
+    try registries.ALCHEMIST_ATELIER_LEVEL.?.register(@"天级", &.{ .name = "天级", .level = 4, .cost_scale = 80000000, .cost_stone = 1600000 });
+    try registries.ALCHEMIST_ATELIER_LEVEL.?.register(@"仙级", &.{ .name = "仙级", .level = 5, .cost_scale = 100000000, .cost_stone = 3200000 });
 }
