@@ -58,7 +58,7 @@ pub const Identifier = struct {
     }
 };
 
-const IdentifierCtx = struct {
+pub const IdentifierCtx = struct {
     pub fn hash(self: @This(), id: Identifier) u64 {
         _ = self;
         return id.hash();
@@ -109,8 +109,27 @@ fn Registry(T: type) type {
     };
 }
 
-const Item = struct {
+pub const Item = struct {
     name: []const u8,
+
+    type: union(enum) {
+        herb: struct {
+            main: struct {
+                temp: isize,
+                trait: Identifier,
+                power: usize,
+            },
+            guiding: struct {
+                temp: isize,
+                trait: Identifier,
+                power: usize,
+            },
+            auxiliary: struct {
+                trait: Identifier,
+                power: usize,
+            },
+        },
+    },
 };
 
 const Level = struct {
@@ -130,9 +149,13 @@ const AlchemistAtelierLevel = struct {
     cost_stone: usize,
 };
 
+const HerbTrait = struct {
+    name: []const u8,
+};
+
 const Ingredient = struct {
     item: Identifier,
-    count: usize,
+    amount: usize,
 };
 
 const Recipe = struct {
@@ -144,12 +167,14 @@ pub const Registries = struct {
     pub var ITEMS: ?Registry(Item) = null;
     pub var LEVELS: ?Registry(Level) = null;
     pub var ALCHEMIST_ATELIER_LEVEL: ?Registry(AlchemistAtelierLevel) = null;
+    pub var HERB_TRAIT: ?Registry(HerbTrait) = null;
     pub var RECIPE: ?Registry(Recipe) = null;
 
     pub fn init(allocator: Allocator) !void {
         ITEMS = Registry(Item).init(allocator);
         LEVELS = Registry(Level).init(allocator);
         ALCHEMIST_ATELIER_LEVEL = Registry(AlchemistAtelierLevel).init(allocator);
+        HERB_TRAIT = Registry(HerbTrait).init(allocator);
         RECIPE = Registry(Recipe).init(allocator);
     }
 
@@ -161,6 +186,9 @@ pub const Registries = struct {
             sth.deinit();
         }
         if (ALCHEMIST_ATELIER_LEVEL) |*sth| {
+            sth.deinit();
+        }
+        if (HERB_TRAIT) |*sth| {
             sth.deinit();
         }
         if (RECIPE) |*sth| {

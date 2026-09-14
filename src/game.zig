@@ -115,10 +115,12 @@ pub const Game = struct {
         _ = ecs.ADD_SYSTEM(self.world.?, "retreat in depth system", ecs.OnUpdate, depthRetreatSystem);
         _ = ecs.ADD_SYSTEM(self.world.?, "save system", ecs.OnStore, saveSystem);
 
-        try SoulCampfire.modules.base.init(&self.command_parser);
-        try SoulCampfire.modules.sect.init(&self.command_parser);
-        try SoulCampfire.modules.items.init(&self.command_parser);
         try SoulCampfire.modules.content.init(&self.command_parser);
+
+        try SoulCampfire.modules.sect.init(&self.command_parser);
+        try SoulCampfire.modules.base.init(&self.command_parser);
+        try SoulCampfire.modules.elixir.init(&self.command_parser);
+        try SoulCampfire.modules.items.init(&self.command_parser);
 
         try self.command_parser.register("避世", "", quitWorldCommand);
         try self.command_parser.register("入世", "", joinWorldCommand);

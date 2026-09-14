@@ -45,9 +45,9 @@ fn inspectSoulCommand(ctx: SoulCampfire.command.Command.CommandContext, argument
     const new_info = models.Player.random(&ctx.game.random_source, ctx.event.value.sender.user_id);
     _ = ecs.set(ctx.game.world.?, player, models.Player, new_info);
 
-    const reply_message = std.fmt.allocPrint(ctx.game.allocator, "[CQ:reply,id={}]欢迎踏入仙途，你的灵根是：{s}, 你将从炼气一层开始", .{ ctx.event.value.message_id, new_info.trait.toDisplay() }) catch unreachable;
+    const reply_message = std.fmt.allocPrint(ctx.game.allocator, "欢迎踏入仙途，你的灵根是：{s}, 你将从炼气一层开始", .{new_info.trait.toDisplay()}) catch unreachable;
     defer ctx.game.allocator.free(reply_message);
-    _ = ctx.game.client.sendGroupMsg(ctx.event.value.group_id, reply_message, .{}) catch {
+    _ = ctx.game.client.groupReply(ctx.event.value.group_id, ctx.event.value.message_id, reply_message) catch {
         log.warn("failed sending messages", .{});
         return;
     };
