@@ -129,6 +129,7 @@ pub const Item = struct {
                 power: usize,
             },
         },
+        med: void,
     },
 };
 
@@ -149,16 +150,16 @@ const AlchemistAtelierLevel = struct {
     cost_stone: usize,
 };
 
-const HerbTrait = struct {
+pub const HerbTrait = struct {
     name: []const u8,
 };
 
-const Ingredient = struct {
+pub const Ingredient = struct {
     item: Identifier,
     amount: usize,
 };
 
-const Recipe = struct {
+pub const Recipe = struct {
     product: Identifier,
     ingredients: []const Ingredient,
 };
